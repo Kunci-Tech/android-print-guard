@@ -79,12 +79,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 # 2. Enable Device Administrator Mode (Prevents accidental uninstallation)
 adb shell dpm set-active-admin com.kuncikuppi.printguard/.receiver.AdminReceiver
 
-# 3. (Xiaomi MIUI/HyperOS Devices) Exclude app from battery saver & grant background permissions
+# 3. (Samsung One UI Devices) Exclude app from battery saver & grant background permissions
 adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
 adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
 adb shell "cmd appops set com.kuncikuppi.printguard RUN_ANY_IN_BACKGROUND allow"
 
-# 4. (Huawei EMUI/HarmonyOS Devices) Exclude app from battery optimization & PowerGenie
+# 4. (Xiaomi MIUI/HyperOS Devices) Exclude app from battery saver & grant background permissions
+adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
+adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
+adb shell "cmd appops set com.kuncikuppi.printguard RUN_ANY_IN_BACKGROUND allow"
+
+# 5. (Huawei EMUI/HarmonyOS Devices) Exclude app from battery optimization & PowerGenie
 adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
 adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
 adb shell "pm disable-user --user 0 com.huawei.powergenie"
@@ -107,6 +112,11 @@ adb shell "pm disable-user --user 0 com.huawei.powergenie"
 ---
 
 ## 🛠️ Vendor-Specific Battery Optimization Setup
+
+### Samsung (One UI)
+1. Tap **`[Exempt]`** inside the Kunci Print Guard app UI to launch the 1-click system battery prompt and select **Allow**.
+2. Alternatively: Go to **Settings -> Apps -> Kunci Print Guard -> Battery** -> Set to **"Unrestricted"**.
+3. Go to **Settings -> Device Care -> Battery -> Background usage limits -> Never sleeping apps** -> Add **Kunci Print Guard**.
 
 ### Huawei (EMUI / HarmonyOS)
 1. Go to **Settings -> Battery -> App Launch** *(Peluncuran Aplikasi)*.

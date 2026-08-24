@@ -500,6 +500,7 @@ fun SettingsScreen(
     onRequestToggleAutoStart: (Boolean) -> Unit,
     onOpenChangePinDialog: () -> Unit
 ) {
+    val context = LocalContext.current
     var epsonIpText by remember(config.epsonIp) { mutableStateOf(config.epsonIp) }
     var epsonPortText by remember(config.epsonPort) { mutableStateOf(config.epsonPort.toString()) }
     var proxyPortText by remember(config.localProxyPort) { mutableStateOf(config.localProxyPort.toString()) }
@@ -622,6 +623,37 @@ fun SettingsScreen(
                             onRequestToggleAutoStart(targetSetting)
                         }
                     )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("1-Click Battery Exemption", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text("Exempt app from OS Doze battery limits", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                context.startActivity(intent)
+                            }
+                        },
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Icon(Icons.Default.BatteryFull, contentDescription = null, modifier = Modifier.size(16.dp), tint = EmeraldSuccess)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Exempt", fontSize = 12.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
