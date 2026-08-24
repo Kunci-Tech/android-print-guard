@@ -771,6 +771,88 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        var isPrintingTest by remember { mutableStateOf(false) }
+        OutlinedButton(
+            onClick = {
+                val scope = kotlinx.coroutines.MainScope()
+                val p = epsonPortText.toIntOrNull() ?: 9100
+                scope.launch {
+                    isPrintingTest = true
+                    val payload = com.kuncikuppi.printguard.network.TestReceiptBuilder.buildTestReceiptPayload(config.localProxyPort, epsonIpText)
+                    val result = com.kuncikuppi.printguard.network.EpsonTcpClient().sendRawBytes(epsonIpText, p, payload)
+                    isPrintingTest = false
+                    if (result.isSuccess) {
+                        Toast.makeText(context, "Physical test receipt printed!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to print test receipt to $epsonIpText", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            enabled = !isPrintingTest,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            if (isPrintingTest) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Printing Physical Test...")
+            } else {
+                Icon(Icons.Default.Print, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Print Physical Test Receipt (ESC/POS)")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        var isUploadingS3 by remember { mutableStateOf(false) }
+        Button(
+            onClick = {
+                val scope = kotlinx.coroutines.MainScope()
+                scope.launch {
+                    if (!com.kuncikuppi.printguard.cloud.S3Uploader.isConfigured()) {
+                        Toast.makeText(context, "S3 Credentials not configured in printguard.properties", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                    isUploadingS3 = true
+                    val repository = com.kuncikuppi.printguard.data.DiskCaptureRepository(context)
+                    repository.exportAllCapturesZip()
+                    val exportsDir = java.io.File(context.cacheDir, "exports")
+                    val latestZip = exportsDir.listFiles { _, name -> name.endsWith(".zip") }
+                        ?.maxByOrNull { it.lastModified() }
+
+                    if (latestZip != null && latestZip.exists()) {
+                        val uploadResult = com.kuncikuppi.printguard.cloud.S3Uploader.uploadZipArchive(latestZip)
+                        isUploadingS3 = false
+                        if (uploadResult.isSuccess) {
+                            Toast.makeText(context, "S3 Cloud Backup Success!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "S3 Upload Failed: ${uploadResult.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        isUploadingS3 = false
+                        Toast.makeText(context, "No capture ZIP file available to upload", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            enabled = !isUploadingS3,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = CyanAccent, contentColor = Color.Black),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            if (isUploadingS3) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.Black)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Uploading Backup to S3 Cloud...", color = Color.Black, fontWeight = FontWeight.Bold)
+            } else {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.Black)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Backup Captures to S3 Cloud Now", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         if (isServiceRunning) {

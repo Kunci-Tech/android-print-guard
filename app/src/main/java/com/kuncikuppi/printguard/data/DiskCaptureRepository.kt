@@ -211,6 +211,24 @@ class DiskCaptureRepository(private val context: Context) : CaptureRepository {
         )
     }
 
+    fun purgeCapturesOlderThan(days: Int = 7): Int {
+        val cutoffMs = System.currentTimeMillis() - (days * 24 * 60 * 60 * 1000L)
+        var deletedCount = 0
+        val files = captureDir.listFiles() ?: return 0
+        for (file in files) {
+            if (file.lastModified() < cutoffMs) {
+                if (file.delete()) {
+                    deletedCount++
+                }
+            }
+        }
+        if (deletedCount > 0) {
+            loadCapturesFromDisk()
+            Log.i(TAG, "Purged $deletedCount old capture files older than $days days.")
+        }
+        return deletedCount
+    }
+
     override suspend fun exportAllCapturesZip(): Uri? = withContext(Dispatchers.IO) {
         val allFiles = captureDir.listFiles()?.toMutableList() ?: mutableListOf()
         val auditFile = File(context.filesDir, "audit_events.json")

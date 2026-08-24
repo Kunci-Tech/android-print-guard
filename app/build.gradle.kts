@@ -18,6 +18,13 @@ val defaultEpsonPort = printguardProps.getProperty("PRINT_GUARD_EPSON_PORT", "91
 val defaultLocalProxyPort = printguardProps.getProperty("PRINT_GUARD_LOCAL_PROXY_PORT", "9100").toInt()
 val defaultWebPort = printguardProps.getProperty("PRINT_GUARD_WEB_PORT", "9101").toInt()
 
+val s3Endpoint = printguardProps.getProperty("PRINT_GUARD_S3_ENDPOINT", "")
+val s3Region = printguardProps.getProperty("PRINT_GUARD_S3_REGION", "us-east-1")
+val s3AccessKeyId = printguardProps.getProperty("PRINT_GUARD_S3_ACCESS_KEY_ID", "")
+val s3SecretAccessKey = printguardProps.getProperty("PRINT_GUARD_S3_SECRET_ACCESS_KEY", "")
+val s3BucketName = printguardProps.getProperty("PRINT_GUARD_S3_BUCKET_NAME", "")
+val s3FolderPrefix = printguardProps.getProperty("PRINT_GUARD_S3_FOLDER_PREFIX", "kunci_receipt")
+
 android {
     namespace = "com.kuncikuppi.printguard"
     compileSdk = 34
@@ -39,6 +46,13 @@ android {
         buildConfigField("int", "DEFAULT_EPSON_PORT", "$defaultEpsonPort")
         buildConfigField("int", "DEFAULT_LOCAL_PROXY_PORT", "$defaultLocalProxyPort")
         buildConfigField("int", "DEFAULT_WEB_PORT", "$defaultWebPort")
+
+        buildConfigField("String", "S3_ENDPOINT", "\"$s3Endpoint\"")
+        buildConfigField("String", "S3_REGION", "\"$s3Region\"")
+        buildConfigField("String", "S3_ACCESS_KEY_ID", "\"$s3AccessKeyId\"")
+        buildConfigField("String", "S3_SECRET_ACCESS_KEY", "\"$s3SecretAccessKey\"")
+        buildConfigField("String", "S3_BUCKET_NAME", "\"$s3BucketName\"")
+        buildConfigField("String", "S3_FOLDER_PREFIX", "\"$s3FolderPrefix\"")
     }
 
     buildTypes {

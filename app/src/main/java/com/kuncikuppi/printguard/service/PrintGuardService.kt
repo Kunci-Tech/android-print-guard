@@ -20,6 +20,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.kuncikuppi.printguard.cloud.S3Uploader
 import com.kuncikuppi.printguard.data.DiskAuditRepository
 import com.kuncikuppi.printguard.data.DiskCaptureRepository
 import com.kuncikuppi.printguard.data.SettingsDataStore
@@ -35,6 +36,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class PrintGuardService : Service() {
 
@@ -126,6 +132,10 @@ class PrintGuardService : Service() {
                         Log.w(TAG, "Could not bind process to Wi-Fi network: ${e.message}")
                     }
                 }
+
+                override fun onLost(network: Network) {
+                    Log.w(TAG, "Wi-Fi network connection lost. Print Guard waiting for auto-reconnect...")
+                }
             })
         } catch (e: Exception) {
             Log.w(TAG, "Error requesting Wi-Fi network binding: ${e.message}")
@@ -176,6 +186,7 @@ class PrintGuardService : Service() {
     private fun startWatchdogHeartbeat() {
         watchdogJob?.cancel()
         watchdogJob = serviceScope.launch(Dispatchers.IO) {
+            var lastDailyCheckDate = ""
             while (isActive) {
                 delay(15000L)
                 scheduleNextExactAlarm()
@@ -185,7 +196,43 @@ class PrintGuardService : Service() {
                     Log.w(TAG, "Watchdog detected proxy engine stopped unexpectedly. Auto-restarting proxy...")
                     proxyServer.start(config.localProxyPort, config.epsonIp, config.epsonPort)
                 }
+
+                // Check 20:00 Daily S3 Backup and 7-Day Auto-Purge
+                val calendar = Calendar.getInstance()
+                val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                val currentDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(calendar.time)
+
+                if (hour >= 20 && lastDailyCheckDate != currentDateStr) {
+                    lastDailyCheckDate = currentDateStr
+                    performScheduledDailyBackupAndPurge()
+                }
             }
+        }
+    }
+
+    private suspend fun performScheduledDailyBackupAndPurge() {
+        withContext(Dispatchers.IO) {
+            try {
+                captureRepository.purgeCapturesOlderThan(7)
+                if (S3Uploader.isConfigured()) {
+                    val exportsDir = File(cacheDir, "exports")
+                    captureRepository.exportAllCapturesZip()
+                    val zipFilter = java.io.FilenameFilter { _, name -> name.endsWith(".zip") }
+                    val latestZip = exportsDir.listFiles(zipFilter)?.maxByOrNull { it.lastModified() }
+
+                    if (latestZip != null && latestZip.exists()) {
+                        val result = S3Uploader.uploadZipArchive(latestZip)
+                        if (result.isSuccess) {
+                            auditRepository.logEvent("S3_BACKUP_SUCCESS", "Automated 20:00 daily S3 backup uploaded: ${result.getOrNull()}")
+                        } else {
+                            auditRepository.logEvent("S3_BACKUP_FAILED", "Automated 20:00 S3 backup failed: ${result.exceptionOrNull()?.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error performing daily backup/purge: ${e.message}", e)
+            }
+            Unit
         }
     }
 

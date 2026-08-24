@@ -12,8 +12,9 @@ gradle-app.setting
 !gradle-wrapper.jar
 .gradletasknamecache
 
-# Local configuration
+# Local configuration & secrets
 local.properties
+printguard.properties
 .idea/
 *.iml
 .DS_Store

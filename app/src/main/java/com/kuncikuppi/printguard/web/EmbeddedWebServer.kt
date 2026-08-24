@@ -2,8 +2,11 @@ package com.kuncikuppi.printguard.web
 
 import android.content.Context
 import android.util.Log
+import com.kuncikuppi.printguard.cloud.S3Uploader
 import com.kuncikuppi.printguard.data.DiskCaptureRepository
 import com.kuncikuppi.printguard.data.SettingsDataStore
+import com.kuncikuppi.printguard.network.EpsonTcpClient
+import com.kuncikuppi.printguard.network.TestReceiptBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,6 +37,7 @@ class EmbeddedWebServer(
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private val epsonClient = EpsonTcpClient()
 
     fun start(port: Int = DEFAULT_WEB_PORT) {
         if (serverSocket?.isClosed == false && serverSocket != null) return
@@ -85,7 +89,13 @@ class EmbeddedWebServer(
 
             when {
                 path == "/api/update-pin" -> {
-                    handlePinUpdate(method, queryString, reader, input, output)
+                    handlePinUpdate(method, queryString, reader, output)
+                }
+                path == "/api/backup-s3" -> {
+                    handleS3BackupTrigger(output)
+                }
+                path == "/api/test-print" -> {
+                    handleTestPrintTrigger(output)
                 }
                 path == "/api/export-zip" -> {
                     serveZipDownload(output)
@@ -104,11 +114,52 @@ class EmbeddedWebServer(
         }
     }
 
+    private suspend fun handleS3BackupTrigger(output: OutputStream) {
+        if (!S3Uploader.isConfigured()) {
+            serveJsonResponse(output, 400, """{"status":"FAILED","message":"S3 cloud storage credentials are not configured in printguard.properties"}""")
+            return
+        }
+
+        try {
+            captureRepository.exportAllCapturesZip()
+            val exportsDir = File(context.cacheDir, "exports")
+            val latestZip = exportsDir.listFiles { _, name -> name.endsWith(".zip") }
+                ?.maxByOrNull { it.lastModified() }
+
+            if (latestZip != null && latestZip.exists()) {
+                val result = S3Uploader.uploadZipArchive(latestZip)
+                if (result.isSuccess) {
+                    serveJsonResponse(output, 200, """{"status":"SUCCESS","message":"S3 Cloud Backup completed successfully: ${result.getOrNull()}"}""")
+                } else {
+                    serveJsonResponse(output, 500, """{"status":"FAILED","message":"${result.exceptionOrNull()?.message}"}""")
+                }
+            } else {
+                serveJsonResponse(output, 404, """{"status":"FAILED","message":"No capture ZIP file available to upload"}""")
+            }
+        } catch (e: Exception) {
+            serveJsonResponse(output, 500, """{"status":"FAILED","message":"${e.message}"}""")
+        }
+    }
+
+    private suspend fun handleTestPrintTrigger(output: OutputStream) {
+        try {
+            val config = settingsDataStore.configFlow.first()
+            val payload = TestReceiptBuilder.buildTestReceiptPayload(config.localProxyPort, config.epsonIp)
+            val result = epsonClient.sendRawBytes(config.epsonIp, config.epsonPort, payload)
+            if (result.isSuccess) {
+                serveJsonResponse(output, 200, """{"status":"SUCCESS","message":"Physical test receipt sent to Epson printer (${config.epsonIp}:${config.epsonPort})"}""")
+            } else {
+                serveJsonResponse(output, 500, """{"status":"FAILED","message":"Cannot reach Epson printer (${config.epsonIp}:${config.epsonPort})"}""")
+            }
+        } catch (e: Exception) {
+            serveJsonResponse(output, 500, """{"status":"FAILED","message":"${e.message}"}""")
+        }
+    }
+
     private suspend fun handlePinUpdate(
         method: String,
         queryString: String,
         reader: BufferedReader,
-        input: java.io.InputStream,
         output: OutputStream
     ) {
         var paramsMap = parseParams(queryString)
@@ -195,7 +246,7 @@ class EmbeddedWebServer(
                     .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
                     h1 { color: #38bdf8; font-size: 22px; margin-top: 0; }
                     .badge { background: #10b981; color: #000; font-weight: bold; padding: 4px 10px; border-radius: 20px; font-size: 12px; }
-                    .btn { background: #10b981; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; cursor: pointer; }
+                    .btn { background: #10b981; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
                     .input { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px 12px; border-radius: 6px; margin-right: 8px; }
                     table { width: 100%; border-collapse: collapse; text-align: left; }
                     th { padding: 10px; background: #334155; color: #94a3b8; font-size: 12px; }
@@ -205,7 +256,15 @@ class EmbeddedWebServer(
                 <div class="card">
                     <h1>🛡️ Kunci Print Guard Remote Dashboard</h1>
                     <p><span class="badge">ACTIVE 24/7</span> Proxy Port: <strong>${config.localProxyPort}</strong> | Target Epson: <strong>${config.epsonIp}:${config.epsonPort}</strong></p>
-                    <a href="/api/export-zip" class="btn">📦 Download ALL Captures & Audit Logs (.ZIP)</a>
+                    <div>
+                        <a href="/api/export-zip" class="btn">📦 Download ALL Captures (.ZIP)</a>
+                        <form method="POST" action="/api/backup-s3" style="display:inline;">
+                            <button type="submit" class="btn" style="background:#0284c7;">☁️ Backup to S3 Cloud Now</button>
+                        </form>
+                        <form method="POST" action="/api/test-print" style="display:inline;">
+                            <button type="submit" class="btn" style="background:#8b5cf6;">🖨️ Print Test Receipt</button>
+                        </form>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -248,7 +307,8 @@ class EmbeddedWebServer(
     private suspend fun serveStatusJson(output: OutputStream) {
         val config = settingsDataStore.configFlow.first()
         val captures = captureRepository.getAllCaptures().first()
-        val json = """{"status":"ACTIVE","proxy_port":${config.localProxyPort},"epson_ip":"${config.epsonIp}","epson_port":${config.epsonPort},"total_captures":${captures.size}}"""
+        val s3Status = if (S3Uploader.isConfigured()) "CONFIGURED" else "NOT_CONFIGURED"
+        val json = """{"status":"ACTIVE","proxy_port":${config.localProxyPort},"epson_ip":"${config.epsonIp}","epson_port":${config.epsonPort},"total_captures":${captures.size},"s3_cloud_backup":"$s3Status"}"""
         val bytes = json.toByteArray(Charsets.UTF_8)
         val headers = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         output.write(headers.toByteArray(Charsets.UTF_8))
