@@ -158,7 +158,10 @@ fun PrintGuardApp(
 
     // Change PIN Dialog States
     var showChangePinDialog by remember { mutableStateOf(false) }
+    var currentPinInput by remember { mutableStateOf("") }
     var newPinText by remember { mutableStateOf("") }
+    var confirmPinText by remember { mutableStateOf("") }
+    var changePinErrorText by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(capturesList) {
         todayCapturedCount = captureRepository.getTodayCaptureCount()
@@ -281,7 +284,10 @@ fun PrintGuardApp(
                         showBootPinDialog = true
                     },
                     onOpenChangePinDialog = {
+                        currentPinInput = ""
                         newPinText = ""
+                        confirmPinText = ""
+                        changePinErrorText = null
                         showChangePinDialog = true
                     }
                 )
@@ -413,6 +419,16 @@ fun PrintGuardApp(
                     Text("Set a new Admin PIN to protect stopping the Print Guard service:")
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
+                        value = currentPinInput,
+                        onValueChange = { currentPinInput = it },
+                        label = { Text("Current Admin PIN") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
                         value = newPinText,
                         onValueChange = { newPinText = it },
                         label = { Text("New Admin PIN") },
@@ -421,20 +437,38 @@ fun PrintGuardApp(
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = confirmPinText,
+                        onValueChange = { confirmPinText = it },
+                        label = { Text("Confirm New Admin PIN") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (changePinErrorText != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(changePinErrorText!!, color = RoseError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (newPinText.trim().isNotEmpty()) {
+                        if (currentPinInput != configState.adminPin) {
+                            changePinErrorText = "Current PIN is incorrect!"
+                        } else if (newPinText.trim().isEmpty()) {
+                            changePinErrorText = "New PIN cannot be empty!"
+                        } else if (newPinText != confirmPinText) {
+                            changePinErrorText = "New PIN and Confirm PIN do not match!"
+                        } else {
                             scope.launch {
                                 settingsDataStore.updateSecurityAndBoot(newPinText.trim(), configState.autoStartOnBoot)
                                 auditRepository.logEvent("PIN_CHANGED", "Admin PIN updated by user", pinAuthorized = true)
                                 showChangePinDialog = false
                                 Toast.makeText(context, "Admin PIN updated successfully", Toast.LENGTH_SHORT).show()
                             }
-                        } else {
-                            Toast.makeText(context, "PIN cannot be empty", Toast.LENGTH_SHORT).show()
                         }
                     }
                 ) {

@@ -73,13 +73,18 @@ export ANDROID_HOME="/opt/homebrew/share/android-commandlinetools"
 ### Installation via ADB
 
 ```bash
-# Install APK onto connected Android device
+# 1. Install APK onto connected Android device
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-# Enable Device Administrator Mode (Prevents accidental uninstallation)
+# 2. Enable Device Administrator Mode (Prevents accidental uninstallation)
 adb shell dpm set-active-admin com.kuncikuppi.printguard/.receiver.AdminReceiver
 
-# (Optional - Huawei Devices) Exclude app from battery optimization & PowerGenie
+# 3. (Xiaomi MIUI/HyperOS Devices) Exclude app from battery saver & grant background permissions
+adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
+adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
+adb shell "cmd appops set com.kuncikuppi.printguard RUN_ANY_IN_BACKGROUND allow"
+
+# 4. (Huawei EMUI/HarmonyOS Devices) Exclude app from battery optimization & PowerGenie
 adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
 adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
 adb shell "pm disable-user --user 0 com.huawei.powergenie"

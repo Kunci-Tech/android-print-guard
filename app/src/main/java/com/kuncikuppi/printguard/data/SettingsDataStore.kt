@@ -8,16 +8,17 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.kuncikuppi.printguard.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "print_guard_settings")
 
 data class PrintGuardConfig(
-    val epsonIp: String = "192.168.8.225",
-    val epsonPort: Int = 9100,
-    val localProxyPort: Int = 9100,
-    val adminPin: String = "1011",
+    val epsonIp: String = BuildConfig.DEFAULT_EPSON_IP,
+    val epsonPort: Int = BuildConfig.DEFAULT_EPSON_PORT,
+    val localProxyPort: Int = BuildConfig.DEFAULT_LOCAL_PROXY_PORT,
+    val adminPin: String = BuildConfig.DEFAULT_ADMIN_PIN,
     val autoStartOnBoot: Boolean = true,
     val isServiceExplicitlyStopped: Boolean = false
 )
@@ -35,14 +36,14 @@ class SettingsDataStore(private val context: Context) {
 
     val configFlow: Flow<PrintGuardConfig> = context.dataStore.data
         .map { preferences ->
-            val savedIp = preferences[KEY_EPSON_IP] ?: "192.168.8.225"
-            val validIp = if (savedIp.endsWith(".255")) "192.168.8.225" else savedIp
+            val savedIp = preferences[KEY_EPSON_IP] ?: BuildConfig.DEFAULT_EPSON_IP
+            val validIp = if (savedIp.endsWith(".255")) BuildConfig.DEFAULT_EPSON_IP else savedIp
 
             PrintGuardConfig(
                 epsonIp = validIp,
-                epsonPort = preferences[KEY_EPSON_PORT] ?: 9100,
-                localProxyPort = preferences[KEY_LOCAL_PROXY_PORT] ?: 9100,
-                adminPin = preferences[KEY_ADMIN_PIN] ?: "1011",
+                epsonPort = preferences[KEY_EPSON_PORT] ?: BuildConfig.DEFAULT_EPSON_PORT,
+                localProxyPort = preferences[KEY_LOCAL_PROXY_PORT] ?: BuildConfig.DEFAULT_LOCAL_PROXY_PORT,
+                adminPin = preferences[KEY_ADMIN_PIN] ?: BuildConfig.DEFAULT_ADMIN_PIN,
                 autoStartOnBoot = preferences[KEY_AUTO_START_ON_BOOT] ?: true,
                 isServiceExplicitlyStopped = preferences[KEY_EXPLICITLY_STOPPED] ?: false
             )

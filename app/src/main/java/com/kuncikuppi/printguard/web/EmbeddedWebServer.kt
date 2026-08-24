@@ -19,6 +19,7 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 
 class EmbeddedWebServer(
     private val context: Context,
@@ -75,9 +76,17 @@ class EmbeddedWebServer(
             val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
 
             val requestLine = reader.readLine() ?: return@withContext
-            val path = requestLine.split(" ").getOrNull(1) ?: "/"
+            val parts = requestLine.split(" ")
+            val method = parts.getOrNull(0) ?: "GET"
+            val rawPath = parts.getOrNull(1) ?: "/"
+
+            val path = rawPath.split("?")[0]
+            val queryString = if (rawPath.contains("?")) rawPath.split("?")[1] else ""
 
             when {
+                path == "/api/update-pin" -> {
+                    handlePinUpdate(method, queryString, reader, input, output)
+                }
                 path == "/api/export-zip" -> {
                     serveZipDownload(output)
                 }
@@ -93,6 +102,69 @@ class EmbeddedWebServer(
         } finally {
             try { clientSocket.close() } catch (_: Exception) {}
         }
+    }
+
+    private suspend fun handlePinUpdate(
+        method: String,
+        queryString: String,
+        reader: BufferedReader,
+        input: java.io.InputStream,
+        output: OutputStream
+    ) {
+        var paramsMap = parseParams(queryString)
+        if (method == "POST") {
+            var contentLength = 0
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (line.isNullOrBlank()) break
+                if (line!!.lowercase().startsWith("content-length:")) {
+                    contentLength = line!!.split(":")[1].trim().toIntOrNull() ?: 0
+                }
+            }
+            if (contentLength > 0) {
+                val bodyChars = CharArray(contentLength)
+                reader.read(bodyChars, 0, contentLength)
+                val bodyStr = String(bodyChars)
+                paramsMap = paramsMap + parseParams(bodyStr)
+            }
+        }
+
+        val currentPinInput = paramsMap["current_pin"] ?: ""
+        val newPinInput = paramsMap["new_pin"] ?: ""
+
+        val config = settingsDataStore.configFlow.first()
+        if (currentPinInput == config.adminPin && newPinInput.trim().isNotEmpty()) {
+            settingsDataStore.updateSecurityAndBoot(newPinInput.trim(), config.autoStartOnBoot)
+            val json = """{"status":"SUCCESS","message":"Admin PIN updated successfully"}"""
+            serveJsonResponse(output, 200, json)
+        } else {
+            val json = """{"status":"FAILED","message":"Incorrect current Admin PIN or invalid new PIN"}"""
+            serveJsonResponse(output, 400, json)
+        }
+    }
+
+    private fun parseParams(query: String): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        if (query.isEmpty()) return map
+        val pairs = query.split("&")
+        for (pair in pairs) {
+            val idx = pair.indexOf("=")
+            if (idx > 0) {
+                val key = URLDecoder.decode(pair.substring(0, idx), "UTF-8")
+                val value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
+                map[key] = value
+            }
+        }
+        return map
+    }
+
+    private fun serveJsonResponse(output: OutputStream, statusCode: Int, json: String) {
+        val bytes = json.toByteArray(Charsets.UTF_8)
+        val statusMsg = if (statusCode == 200) "200 OK" else "400 Bad Request"
+        val headers = "HTTP/1.1 $statusMsg\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+        output.write(headers.toByteArray(Charsets.UTF_8))
+        output.write(bytes)
+        output.flush()
     }
 
     private suspend fun serveDashboardHtml(output: OutputStream) {
@@ -123,7 +195,8 @@ class EmbeddedWebServer(
                     .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
                     h1 { color: #38bdf8; font-size: 22px; margin-top: 0; }
                     .badge { background: #10b981; color: #000; font-weight: bold; padding: 4px 10px; border-radius: 20px; font-size: 12px; }
-                    .btn { background: #10b981; color: #fff; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; cursor: pointer; }
+                    .btn { background: #10b981; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; cursor: pointer; }
+                    .input { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px 12px; border-radius: 6px; margin-right: 8px; }
                     table { width: 100%; border-collapse: collapse; text-align: left; }
                     th { padding: 10px; background: #334155; color: #94a3b8; font-size: 12px; }
                 </style>
@@ -133,6 +206,16 @@ class EmbeddedWebServer(
                     <h1>🛡️ Kunci Print Guard Remote Dashboard</h1>
                     <p><span class="badge">ACTIVE 24/7</span> Proxy Port: <strong>${config.localProxyPort}</strong> | Target Epson: <strong>${config.epsonIp}:${config.epsonPort}</strong></p>
                     <a href="/api/export-zip" class="btn">📦 Download ALL Captures & Audit Logs (.ZIP)</a>
+                </div>
+
+                <div class="card">
+                    <h3>🔐 Remote Admin PIN Administration</h3>
+                    <p style="font-size: 13px; color: #94a3b8;">Modify the Admin Protection PIN remotely over local Wi-Fi:</p>
+                    <form method="POST" action="/api/update-pin" style="margin-top: 10px;">
+                        <input type="password" name="current_pin" placeholder="Current PIN" class="input" required />
+                        <input type="password" name="new_pin" placeholder="New Admin PIN" class="input" required />
+                        <button type="submit" class="btn" style="background: #38bdf8; color: #000;">Update Admin PIN</button>
+                    </form>
                 </div>
 
                 <div class="card">
