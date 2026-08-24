@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -40,10 +42,16 @@
             </intent-filter>
         </activity>
 
+        <!-- BUG FIX #4: stopWithTask="false" prevents Huawei EMUI/HarmonyOS from
+             killing the foreground service when the user swipes away the app task.
+             Without this, swiping the app kills the service and the accept loop dies,
+             which is exactly the 5-minute-idle-then-not-printing symptom the user sees.
+             The service will remain alive independently of the app's task lifecycle. -->
         <service
             android:name=".service.PrintGuardService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
         <receiver

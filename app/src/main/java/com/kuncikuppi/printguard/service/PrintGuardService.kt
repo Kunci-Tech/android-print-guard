@@ -17,7 +17,6 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.kuncikuppi.printguard.cloud.S3Uploader
@@ -237,35 +236,10 @@ class PrintGuardService : Service() {
     }
 
     private fun scheduleNextExactAlarm() {
-        try {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(this, WatchdogReceiver::class.java).apply {
-                action = WatchdogReceiver.ACTION_WATCHDOG_TICK
-            }
-            val pendingIntent = PendingIntent.getBroadcast(
-                this,
-                9100,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val triggerAtMs = SystemClock.elapsedRealtime() + 60000L
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error scheduling Watchdog AlarmManager: ${e.message}")
-        }
+        // Delegate alarm scheduling to WatchdogReceiver — single source of truth.
+        // This prevents duplication and ensures the alarm fires even if the
+        // service process is killed and then restarted by the receiver.
+        WatchdogReceiver.scheduleNextAlarm(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

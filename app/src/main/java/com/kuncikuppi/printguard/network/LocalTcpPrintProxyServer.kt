@@ -5,6 +5,7 @@ import com.kuncikuppi.printguard.domain.repository.CaptureRepository
 import com.kuncikuppi.printguard.spooler.PrintSpoolerEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,12 +40,17 @@ class LocalTcpPrintProxyServer(
     companion object {
         private const val TAG = "LocalTcpPrintProxy"
         private const val SOCKET_TIMEOUT_MS = 10000
-        private const val ACCEPT_TIMEOUT_MS = 3000 // 3s accept timeout prevents Huawei OS thread freezing
+        private const val ACCEPT_TIMEOUT_MS = 3000
         private const val SERVER_BACKLOG = 100
     }
 
     private val epsonTcpClient = EpsonTcpClient()
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
+
+    // BUG FIX #1: Use SupervisorJob() instead of Job().
+    // With a plain Job(), any uncaught exception in a child coroutine (handlePrintSession)
+    // propagates upward and KILLS the entire scope — including the accept loop.
+    // SupervisorJob() isolates child failures so the accept loop always stays alive.
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
@@ -94,7 +100,8 @@ class LocalTcpPrintProxyServer(
             try {
                 val socket = ServerSocket(localPort, SERVER_BACKLOG, InetAddress.getByName("0.0.0.0"))
                 socket.reuseAddress = true
-                socket.soTimeout = ACCEPT_TIMEOUT_MS // Active 3s cycling loop to prevent thread suspension
+                // 3s accept timeout prevents Huawei OS from freezing the thread in deep idle
+                socket.soTimeout = ACCEPT_TIMEOUT_MS
                 serverSocket = socket
 
                 _statusState.value = _statusState.value.copy(
@@ -119,11 +126,13 @@ class LocalTcpPrintProxyServer(
                         val clientAddress = posSocket.remoteSocketAddress.toString()
                         Log.i(TAG, "Incoming print connection from $clientAddress")
 
+                        // Each session is launched under SupervisorJob scope —
+                        // exceptions in handlePrintSession will NOT kill the accept loop
                         scope.launch(Dispatchers.IO) {
                             handlePrintSession(posSocket, clientAddress, epsonIp, epsonPort)
                         }
                     } catch (_: SocketTimeoutException) {
-                        // Expected 3s accept timeout cycle - keeps thread active and unfreezable on Huawei
+                        // Expected 3s accept timeout cycle - keeps thread active on Huawei
                     } catch (e: Exception) {
                         if (!socket.isClosed) {
                             Log.e(TAG, "Error accepting POS connection: ${e.message}")

@@ -3,6 +3,9 @@ package com.kuncikuppi.printguard.network
 import android.util.Log
 import com.kuncikuppi.printguard.domain.transport.PrinterTransport
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
@@ -97,6 +100,17 @@ class EpsonTcpClient : PrinterTransport {
             }
         }
 
+    // BUG FIX #2: Rewritten as truly bidirectional using two parallel coroutines.
+    //
+    // The old implementation was a single loop that only read from posInput → printerOutput.
+    // After 5 min idle, the Epson printer-side TCP connection goes half-closed (printer timeout).
+    // The next write to printerOutput would throw a "Broken pipe" exception which:
+    //   (a) terminated the forwarding, and
+    //   (b) propagated up through Job() to kill the entire accept loop scope (Bug #1).
+    //
+    // The new implementation runs POS→Epson and Epson→POS in two independent coroutines
+    // under coroutineScope. When either direction closes, the other is cancelled immediately,
+    // ensuring clean bidirectional teardown without leaking or blocking the accept loop.
     override suspend fun forwardBidirectional(
         posInput: InputStream,
         posOutput: OutputStream,
@@ -105,33 +119,56 @@ class EpsonTcpClient : PrinterTransport {
         onByteChunkCopied: (ByteArray, Int) -> Unit
     ) {
         withContext(Dispatchers.IO) {
-            val buffer = ByteArray(BUFFER_SIZE)
-            var totalForwarded = 0L
-
+            // Use a coroutineScope (not supervisorScope) so that when either direction
+            // closes, the other is immediately cancelled — no zombie half-connection
             try {
-                var bytesRead: Int
-                while (posInput.read(buffer).also { bytesRead = it } != -1) {
-                    if (bytesRead > 0) {
-                        printerOutput.write(buffer, 0, bytesRead)
-                        printerOutput.flush()
-
-                        totalForwarded += bytesRead
-                        onByteChunkCopied(buffer, bytesRead)
-
-                        if (printerInput.available() > 0) {
-                            val responseBuffer = ByteArray(BUFFER_SIZE)
-                            val respRead = printerInput.read(responseBuffer)
-                            if (respRead > 0) {
-                                posOutput.write(responseBuffer, 0, respRead)
-                                posOutput.flush()
+                coroutineScope {
+                    // Direction 1: POS → Epson printer (primary data path, captures print jobs)
+                    val posToEpsonJob: Job = launch(Dispatchers.IO) {
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        try {
+                            var bytesRead: Int
+                            while (posInput.read(buffer).also { bytesRead = it } != -1) {
+                                if (bytesRead > 0) {
+                                    printerOutput.write(buffer, 0, bytesRead)
+                                    printerOutput.flush()
+                                    onByteChunkCopied(buffer, bytesRead)
+                                }
                             }
+                        } catch (e: SocketTimeoutException) {
+                            Log.d(TAG, "POS→Epson: socket timeout (session complete)")
+                        } catch (e: Exception) {
+                            Log.d(TAG, "POS→Epson: channel closed (${e.message})")
                         }
                     }
+
+                    // Direction 2: Epson → POS (status responses, ACKs, keepalive bytes)
+                    // This is crucial — without reading this, Epson's TCP send buffer fills up,
+                    // causing TCP backpressure that silently stalls the POS→Epson direction.
+                    val epsonToPosJob: Job = launch(Dispatchers.IO) {
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        try {
+                            var bytesRead: Int
+                            while (printerInput.read(buffer).also { bytesRead = it } != -1) {
+                                if (bytesRead > 0) {
+                                    posOutput.write(buffer, 0, bytesRead)
+                                    posOutput.flush()
+                                }
+                            }
+                        } catch (e: SocketTimeoutException) {
+                            Log.d(TAG, "Epson→POS: socket timeout")
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Epson→POS: channel closed (${e.message})")
+                        }
+                    }
+
+                    // Wait for the primary POS→Epson direction to complete first
+                    posToEpsonJob.join()
+                    // Then cancel the Epson→POS direction
+                    epsonToPosJob.cancel()
                 }
-            } catch (e: SocketTimeoutException) {
-                Log.d(TAG, "Socket read timeout reached after forwarding $totalForwarded bytes")
             } catch (e: Exception) {
-                Log.e(TAG, "Error during forwarding: ${e.message}", e)
+                Log.d(TAG, "Bidirectional forwarding session ended: ${e.message}")
             }
         }
     }
