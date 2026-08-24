@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Kunci Print Guard</string>
+    <string name="notification_channel_name">Print Guard Proxy Service</string>
+    <string name="notification_channel_desc">Shows status of local TCP print proxy for Epson printer</string>
+</resources>
