@@ -19,6 +19,11 @@ printguard.properties
 *.iml
 .DS_Store
 
+# React Web App node_modules and build artifacts
+audit-analyzer-web/node_modules/
+audit-analyzer-web/dist/
+*.zip
+
 # Graft & local agent files
 graft/
 .claude/

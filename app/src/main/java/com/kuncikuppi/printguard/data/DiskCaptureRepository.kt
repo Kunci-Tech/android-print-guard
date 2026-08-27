@@ -32,8 +32,8 @@ class DiskCaptureRepository(private val context: Context) : CaptureRepository {
         private const val TAG = "DiskCaptureRepository"
         private const val CAPTURES_DIR = "captures"
         private const val EXPORTS_DIR = "exports"
-        private const val MAX_JOBS = 100
-        private const val MAX_BYTES_LIMIT = 25 * 1024 * 1024L // 25 MB
+        private const val MAX_JOBS = 5000
+        private const val MAX_BYTES_LIMIT = 250 * 1024 * 1024L // 250 MB
     }
 
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()

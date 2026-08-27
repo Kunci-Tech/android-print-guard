@@ -1,142 +1,144 @@
-# 🛡️ Kunci Print Guard
+# 🛡️ Kunci Print Guard & Audit Synthesizer Suite
 
-> **Production-ready Android Local TCP Print Proxy, RAW ESC/POS Receipt Capture Engine, and Offline Spooler Failover Suite.**
+> **Production-Ready Android Local TCP Print Proxy, RAW ESC/POS Capture Engine, and Client-Side ReactJS POS Reconciliation & Threat Analyzer.**
 
-[![Android License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-purple.svg)](https://kotlinlang.org/)
 [![Android API](https://img.shields.io/badge/API-24%2B-green.svg)](https://developer.android.com)
+[![React](https://img.shields.io/badge/ReactJS-19.0-blue.svg)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.0-646CFF.svg)](https://vitejs.dev/)
 
-**Kunci Print Guard** is a lightweight, high-performance Android application designed to run 24/7 on POS Android tablets (e.g. Huawei, Xiaomi, Samsung). It acts as an in-line TCP proxy between Point-of-Sale (POS) applications (e.g. Luna POS) and ESC/POS thermal receipt printers (e.g. Epson TM-T82XII).
+**Kunci Print Guard** is a 24/7 background Android proxy application and ReactJS audit suite designed for Point-of-Sale (POS) reliability and anti-fraud auditing. It intercepts, logs, verifies, and reconciles every printed physical receipt in real-time between POS applications (e.g. Luna POS) and thermal receipt printers (e.g. Epson TM-T82XII).
 
-It intercepts, logs, and verifies every printed receipt in real-time, providing visual receipt previews, offline print queue failover, security audit logs, and an embedded web dashboard.
+---
+
+## 🏗️ Repository Architecture
+
+This monorepo contains two primary components:
+
+```text
+android-print-guard/
+├── app/                        # Android Native App (Kotlin, API 24+)
+│   ├── data/                   # 5,000-job rolling buffer & Disk Capture Repository
+│   ├── network/                # In-line TCP Proxy (:9100) & Embedded Web Server (:9101)
+│   ├── parser/                 # Binary ESC/POS Stream Interpreter
+│   ├── spooler/                # Offline Failover Queue & Watchdog Engine
+│   └── ui/                     # Jetpack Compose Management UI & Admin PIN Security
+│
+└── audit-analyzer-web/         # ReactJS Web Audit Dashboard (Vite + TypeScript)
+    ├── src/components/         # Reconciliation, Itemized Sales, Order Directory & Inspectors
+    ├── src/utils/              # ESC/POS Synthesizer, 2-Way S3/POS Auto-Grab & ZIP Parser
+    └── src/types/              # Audit & Reconciliation Data Schemas
+```
 
 ---
 
 ## 🌟 Key Features
 
+### 📱 Android Proxy App (`app/`)
 - **⚡ Zero-Latency TCP Proxy (`:9100`)**: Disables Nagle's algorithm (`tcpNoDelay = true`) for instantaneous, 0ms buffer receipt output.
-- **🧾 ESC/POS Stream Interpreter & Virtual Receipt Preview**: Parses raw binary ESC/POS formatting (`ESC E` bold, `ESC a` alignment, `GS V` paper cut) into a pixel-perfect Virtual Thermal Paper Receipt Card.
+- **🧾 ESC/POS Stream Interpreter**: Parses raw binary ESC/POS formatting (`ESC E` bold, `ESC a` alignment, `GS V` paper cut) into a pixel-perfect Virtual Thermal Paper Receipt Card.
+- **📦 5,000-Job Rolling Storage Buffer**: Retains up to 5,000 receipts (250 MB capacity) on local tablet storage, preventing early purging of morning shift receipts.
 - **🛡️ Offline Spooler & Queue Failover**: Safely holds receipt payloads when the printer is offline or out of paper, automatically flushing queued jobs in exact order when the printer recovers.
-- **🌐 Embedded Web Management Dashboard (`:9101`)**: Access live telemetry, inspect receipts, and download bulk `.ZIP` diagnostic archives remotely from any phone or laptop browser on the local Wi-Fi.
-- **📦 One-Click Bulk Export (.ZIP)**: Bundles all captured `.raw` payloads, `.json` metadata files, and security audit logs (`audit_events.json`) into a single shareable `.zip` file for forensic investigation.
-- **🔒 PIN-Protected Administration & Device Admin**: Admin PIN protection (`1011`) for stopping service or changing policies. Device Admin integration prevents unauthorized uninstallation.
-- **🔄 24/7 Background Self-Healing**: Powered by Android `WIFI_MODE_FULL_LOW_LATENCY` locks, `TRANSPORT_WIFI` socket binding, a 15s Watchdog loop, and `AlarmManager.setExactAndAllowWhileIdle()` wakeup ticks.
+- **🌐 Embedded Web Server (`:9101`)**: Serve live telemetry and downloadable `.ZIP` diagnostic archives remotely over Wi-Fi.
+- **🔒 PIN-Protected Administration**: Admin PIN protection (`1011`) for stopping service or changing policies. Device Admin integration prevents unauthorized uninstallation.
+
+### 💻 React Audit Analyzer Web App (`audit-analyzer-web/`)
+- **🚨 POS Reconciliation & Threat Audit Engine**: Automatically parses **Daily Sales Summary Reports (`RINGKASAN PENJUALAN`)** and compares them against the sum of canonical customer bills (`KK`), alerting management to missing morning shift receipts or deleted POS orders.
+- **🛍️ Itemized Product Sales Summary**: Extracts exact item names, variants, and quantities (e.g. `Matcha (Iced / Freshmilk)`, `Kunci Bagel - Bagel Original`), excluding duplicate kitchen/bar ticket copies.
+- **📋 POS Order Master Directory**: Groups captures by Order ID (`POS-XXXXXX-XX`), linking all associated print copies and header metadata.
+- **☁️ 2-Way Auto-Grab & Cloud Synchronization**: Fetch and parse backup archives via **AWS S3 / R2 / MinIO** URLs or direct **Android Proxy Wi-Fi Sync** (`:9101`).
+- **📊 One-Click CSV Exporters**: Export Itemized Product Summaries, POS Order Directories, and Reconciliation Threat Reports.
 
 ---
 
-## 📐 Network Architecture
+## 📐 Network & Data Architecture
 
 ```text
-                                [ Internet ]
-                                     │
-                           [ Xiaomi Modem/Router ]
-                                     │
-                             (Wi-Fi / Ethernet)
-                                     │
-                    ┌────────────────▼────────────────┐
-                    │ GL.iNet Router (GL-MT300N-V2)   │
-                    │ Subnet: 192.168.8.x             │
-                    └────────┬───────────────┬────────┘
-                             │               │
-                     (Wi-Fi 2.4GHz)       (Ethernet LAN)
-                             │               │
-                      [ Huawei Tab ]    [ Epson TM-T82XII ]
-                      192.168.8.178     192.168.8.225:9100
-                      (Luna POS +       
-                       Print Guard)
+                                [ Internet / Cloud S3 ]
+                                           │
+                              ┌────────────┴────────────┐
+                              │ S3 Backup Storage       │
+                              │ (presigned .zip archive)│
+                              └────────────┬────────────┘
+                                           │
+                    ┌──────────────────────▼──────────────────────┐
+                    │  React Audit Analyzer Web App               │
+                    │  (http://localhost:5173 or Web Client)      │
+                    └──────────────────────▲──────────────────────┘
+                                           │ (HTTP / S3 Auto-Grab)
+                                           │
+┌──────────────────────────────────────────┴──────────────────────────────────────────┐
+│ Local Wi-Fi Subnet (192.168.8.x)                                                    │
+│                                                                                     │
+│  ┌─────────────────────────┐     TCP :9100     ┌─────────────────────────────────┐  │
+│  │ POS App (e.g. Luna POS) │ ────────────────> │ Android Print Guard Proxy       │  │
+│  │ (Android Tablet)        │                   │ (Port 9100, 5000-job buffer)    │  │
+│  └─────────────────────────┘                   └────────────────┬────────────────┘  │
+│                                                                 │                   │
+│                                                             TCP │ :9100             │
+│                                                                 ▼                   │
+│                                                ┌─────────────────────────────────┐  │
+│                                                │ Thermal Printer (Epson TM-T82)  │  │
+│                                                │ 192.168.8.225:9100              │  │
+│                                                └─────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 🚀 Quick Start Guide
 
-### Prerequisites
-- Android Studio Hedgehog (2023.1.1+) or JDK 17.
-- Android device running API 24 (Android 7.0) or higher.
-- Epson TM-T82XII (or compatible ESC/POS network thermal printer).
-
-### Building from Source
+### 1. Running the React Web Audit Analyzer
 
 ```bash
-# Clone repository
-git clone https://github.com/your-username/android-print-guard.git
-cd android-print-guard
+# Navigate to web analyzer directory
+cd audit-analyzer-web
 
-# Set environment variables for Android CLI
+# Install dependencies
+npm install
+
+# Run Vite development server
+npm run dev
+
+# Open browser at http://localhost:5173
+```
+
+To create a production build:
+```bash
+npm run build
+```
+
+### 2. Building & Deploying the Android App
+
+#### Prerequisites
+- Android Studio Hedgehog (2023.1.1+) or OpenJDK 17.
+- Android device running API 24 (Android 7.0) or higher.
+
+#### Build & Install via ADB
+
+```bash
+# Set Java 17 environment variable
 export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
-export ANDROID_HOME="/opt/homebrew/share/android-commandlinetools"
 
 # Assemble Debug APK
 ./gradlew assembleDebug
-```
 
-### Installation via ADB
+# Install onto connected Android tablet via ADB
+/opt/homebrew/share/android-commandlinetools/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-```bash
-# 1. Install APK onto connected Android device
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-
-# 2. Enable Device Administrator Mode (Prevents accidental uninstallation)
-adb shell dpm set-active-admin com.kuncikuppi.printguard/.receiver.AdminReceiver
-
-# 3. (Samsung One UI Devices) Exclude app from battery saver & grant background permissions
-adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
-adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
-adb shell "cmd appops set com.kuncikuppi.printguard RUN_ANY_IN_BACKGROUND allow"
-
-# 4. (Xiaomi MIUI/HyperOS Devices) Exclude app from battery saver & grant background permissions
-adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
-adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
-adb shell "cmd appops set com.kuncikuppi.printguard RUN_ANY_IN_BACKGROUND allow"
-
-# 5. (Huawei EMUI/HarmonyOS Devices) Exclude app from battery optimization & PowerGenie
-adb shell "dumpsys deviceidle whitelist +com.kuncikuppi.printguard"
-adb shell "cmd appops set com.kuncikuppi.printguard RUN_IN_BACKGROUND allow"
-adb shell "pm disable-user --user 0 com.huawei.powergenie"
+# Launch Main Activity
+/opt/homebrew/share/android-commandlinetools/platform-tools/adb shell am start -n com.kuncikuppi.printguard/.ui.MainActivity
 ```
 
 ---
 
-## 📖 Configuration & Administration
+## 📄 Documentation
 
-1. **Default Settings**:
-   - **Target Epson Printer IP**: `192.168.8.225`
-   - **Target Printer Port**: `9100`
-   - **Local Proxy Listening Port**: `9100`
-   - **Web Dashboard Port**: `9101`
-   - **Default Admin PIN**: `1011`
-
-2. **Luna POS Setup**:
-   In Luna POS settings, change the target printer IP from `192.168.8.225` to `127.0.0.1` (or the tablet's local Wi-Fi IP `192.168.8.xxx`). All print jobs will route through Kunci Print Guard seamlessly.
+For full architecture details, data flow diagrams, and ESC/POS payload specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## 🛠️ Vendor-Specific Battery Optimization Setup
+## 📜 License
 
-### Samsung (One UI)
-1. Tap **`[Exempt]`** inside the Kunci Print Guard app UI to launch the 1-click system battery prompt and select **Allow**.
-2. Alternatively: Go to **Settings -> Apps -> Kunci Print Guard -> Battery** -> Set to **"Unrestricted"**.
-3. Go to **Settings -> Device Care -> Battery -> Background usage limits -> Never sleeping apps** -> Add **Kunci Print Guard**.
-
-### Huawei (EMUI / HarmonyOS)
-1. Go to **Settings -> Battery -> App Launch** *(Peluncuran Aplikasi)*.
-2. Find **Kunci Print Guard** -> Change from *"Manage Automatically"* to **"Manage Manually"**.
-3. Enable **Auto-launch**, **Secondary launch**, and **Run in background**.
-4. Go to **Settings -> Apps -> Special Access -> Battery Optimization** -> Set Kunci Print Guard to **"Don't Allow / Excluded"**.
-
-### Xiaomi (MIUI / HyperOS)
-1. Go to **Settings -> Apps -> Manage Apps -> Kunci Print Guard**.
-2. Enable **Autostart**.
-3. Change **Battery Saver** from *"Smart saving"* to **"No restrictions"**.
-
----
-
-## 📚 Technical Documentation
-
-For in-depth architectural details, refer to [ARCHITECTURE.md](ARCHITECTURE.md).
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is open-source under the [MIT License](LICENSE).
