@@ -50,6 +50,18 @@ function getVerdictTone(audit: DailyPrintAudit): {
   return { badgeClass: 'badge-emerald', icon: <CheckCircle2 size={14} />, label: 'Clean' };
 }
 
+function getVerifyingSummaryText(audit: DailyPrintAudit): string {
+  if (!audit.verifyingSummary) {
+    return `No Daily Sales Summary Snapshot was captured for Operational Date ${audit.operationalDate}.`;
+  }
+
+  const cutoffText = audit.excludedAfterCutoffCount > 0
+    ? ` ${audit.excludedAfterCutoffCount} later event(s) are excluded until a newer summary is captured.`
+    : '';
+
+  return `Using the latest Daily Sales Summary Snapshot captured ${formatDateTime(audit.verifyingSummary.capturedAt)}.${cutoffText}`;
+}
+
 export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
   archive,
   selectedDate,
@@ -95,12 +107,17 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
             {verdict?.label}
           </span>
           <h1>Post-routing reduction audit</h1>
-          <p>
-            Verifying summary captured {formatDateTime(audit.verifyingSummary?.capturedAt)}
-            {audit.excludedAfterCutoffCount > 0 ? `; ${audit.excludedAfterCutoffCount} later event(s) excluded from comparison.` : '.'}
-          </p>
+          <p>{getVerifyingSummaryText(audit)}</p>
         </div>
         <div className="audit-verdict-stats">
+          <div>
+            <span>Operational Date</span>
+            <strong>{audit.operationalDate}</strong>
+          </div>
+          <div>
+            <span>Verifying summary</span>
+            <strong>{formatDateTime(audit.verifyingSummary?.capturedAt)}</strong>
+          </div>
           <div>
             <span>Production exposure</span>
             <strong>{audit.summaryComparison.productionExposureQuantity}</strong>
@@ -117,8 +134,34 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
             <span>Summary revenue</span>
             <strong>{formatCurrency(audit.summaryComparison.summaryRevenue)}</strong>
           </div>
+          <div>
+            <span>Summary deliveries</span>
+            <strong>{audit.verifyingSummary ? `${audit.verifyingSummary.uniquePayloadCount} unique / ${audit.verifyingSummary.deliveryCount} total` : 'None'}</strong>
+          </div>
+          <div>
+            <span>Provisional exclusions</span>
+            <strong>{audit.excludedAfterCutoffCount}</strong>
+          </div>
         </div>
       </section>
+
+      {audit.isProvisional && (
+        <section className="glass-panel audit-warning-row">
+          <AlertTriangle size={18} />
+          <span>
+            Results are provisional for {audit.operationalDate}; evidence captured after {formatDateTime(audit.verifyingSummary?.capturedAt)} is not included in comparisons.
+          </span>
+        </section>
+      )}
+
+      {!audit.verifyingSummary && (
+        <section className="glass-panel audit-warning-row">
+          <AlertTriangle size={18} />
+          <span>
+            This Operational Date has captured POS evidence but no Daily Sales Summary Snapshot, so summary comparisons are unavailable.
+          </span>
+        </section>
+      )}
 
       <section className="audit-section">
         <div className="audit-section-header">
@@ -228,6 +271,33 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="audit-section">
+        <div className="audit-section-header">
+          <div>
+            <span className="audit-eyebrow">Verifying summary</span>
+            <h3>Snapshot delivery history</h3>
+          </div>
+          <span className="badge badge-cyan">
+            {audit.verifyingSummary ? `${audit.verifyingSummary.uniquePayloadCount} unique payload(s)` : 'No summary'}
+          </span>
+        </div>
+        {!audit.verifyingSummary ? (
+          <div className="glass-panel audit-empty-row">
+            <ReceiptText size={18} />
+            <span>No Daily Sales Summary Snapshot deliveries were captured for this Operational Date.</span>
+          </div>
+        ) : (
+          <div className="audit-gap-list">
+            {audit.verifyingSummary.deliveries.map(delivery => (
+              <div key={delivery.sourceCaptureId} className="glass-panel audit-gap">
+                <strong>{formatDateTime(delivery.capturedAt)} · {delivery.rawFileName}</strong>
+                <span>{delivery.isDuplicateDelivery ? `duplicate of ${delivery.duplicateOfId}` : 'unique payload'}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="audit-section">

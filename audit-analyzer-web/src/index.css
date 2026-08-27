@@ -239,6 +239,7 @@ input:checked + .slider:before {
 .audit-topbar,
 .audit-date-picker,
 .audit-empty-row,
+.audit-warning-row,
 .audit-section-header,
 .audit-event-row {
   display: flex;
@@ -340,7 +341,7 @@ input:checked + .slider:before {
 
 .audit-verdict-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -382,10 +383,21 @@ input:checked + .slider:before {
 }
 
 .audit-empty-row,
+.audit-warning-row,
 .audit-empty-state {
   gap: 10px;
   padding: 18px;
   border-radius: 8px;
+}
+
+.audit-warning-row {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.09);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.audit-warning-row span {
+  color: var(--text-main);
 }
 
 .audit-empty-state {

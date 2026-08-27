@@ -25,6 +25,14 @@ function makeCapture(id: string, capturedAt: string, rawFilename: string, text: 
   };
 }
 
+function makeDailySummary(date: string, itemLines: string[]): string {
+  return [
+    'RINGKASAN PENJUALAN',
+    `${date} - ${date}`,
+    ...itemLines
+  ].join('\n');
+}
+
 async function buildZip(captures: ReturnType<typeof makeCapture>[]): Promise<ArrayBuffer> {
   const zip = new JSZip();
 
@@ -88,11 +96,9 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
     const zipBuffer = await buildZip([
       makeCapture('captain-1', '2026-08-27T08:30:00.000Z', 'captain-1.raw', productionTicket),
       makeCapture('captain-2', '2026-08-27T08:30:08.000Z', 'captain-2.raw', productionTicket),
-      makeCapture('summary-1', '2026-08-27T09:00:00.000Z', 'summary-1.raw', [
-        'RINGKASAN PENJUALAN',
-        '27/08/2026 - 27/08/2026',
+      makeCapture('summary-1', '2026-08-27T09:00:00.000Z', 'summary-1.raw', makeDailySummary('27/08/2026', [
         'x2 Latte / 70.000'
-      ].join('\n'))
+      ]))
     ]);
 
     const archive = await parseAuditZipArchive(zipBuffer, 'regression.zip');
@@ -207,16 +213,12 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
     ].join('\n');
 
     const zipBuffer = await buildZip([
-      makeCapture('summary-25', '2026-08-25T10:00:00.000Z', 'summary-25.raw', [
-        'RINGKASAN PENJUALAN',
-        '25/08/2026 - 25/08/2026',
+      makeCapture('summary-25', '2026-08-25T10:00:00.000Z', 'summary-25.raw', makeDailySummary('25/08/2026', [
         'x9 Old Day / 900.000'
-      ].join('\n')),
-      makeCapture('summary-27-early', '2026-08-27T08:00:00.000Z', 'summary-27-early.raw', [
-        'RINGKASAN PENJUALAN',
-        '27/08/2026 - 27/08/2026',
+      ])),
+      makeCapture('summary-27-early', '2026-08-27T08:00:00.000Z', 'summary-27-early.raw', makeDailySummary('27/08/2026', [
         'x1 Club Sandwich / 100.000'
-      ].join('\n')),
+      ])),
       makeCapture('station-1', '2026-08-27T09:10:00.000Z', 'station-1.raw', coldTicket),
       makeCapture('station-1-retry', '2026-08-27T09:10:06.000Z', 'station-1-retry.raw', coldTicket),
       makeCapture('captain-1', '2026-08-27T09:10:30.000Z', 'captain-1.raw', [
@@ -254,11 +256,10 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         'Date: 27/08/2026 12:30',
         'x1 Hidden Cake'
       ].join('\n')),
-      makeCapture('summary-27-latest', '2026-08-27T10:00:00.000Z', 'summary-27-latest.raw', [
-        'RINGKASAN PENJUALAN',
-        '27/08/2026 - 27/08/2026',
+      makeCapture('summary-27-latest', '2026-08-27T10:00:00.000Z', 'summary-27-latest.raw', makeDailySummary('27/08/2026', [
+        'Snapshot: closing',
         'x1 Club Sandwich / 100.000'
-      ].join('\n')),
+      ])),
       makeCapture('after-cutoff', '2026-08-27T10:10:00.000Z', 'after-cutoff.raw', [
         'BAR',
         'Order Number: POS-260827-102',
@@ -277,7 +278,9 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
     expect(august27).toMatchObject({
       verifyingSummary: {
         sourceCaptureId: 'summary-27-latest',
-        capturedAt: '2026-08-27T10:00:00.000Z'
+        capturedAt: '2026-08-27T10:00:00.000Z',
+        deliveryCount: 2,
+        uniquePayloadCount: 2
       },
       isProvisional: true,
       excludedAfterCutoffCount: 1,
@@ -349,5 +352,142 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         posUser: undefined
       }
     ]);
+  });
+
+  it('keeps order-only operational dates selectable with a missing-summary state', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('summary-27', '2026-08-27T10:00:00.000Z', 'summary-27.raw', makeDailySummary('27/08/2026', [
+        'x1 Latte / 35.000'
+      ])),
+      makeCapture('ticket-28', '2026-08-28T04:00:00.000Z', 'ticket-28.raw', [
+        'BAR',
+        'Order Number: POS-260828-1',
+        'Date: 28/08/2026 12:00',
+        'x1 Espresso'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'missing-summary.zip');
+
+    expect(archive.auditModel.availableOperationalDates).toEqual(['2026-08-27', '2026-08-28']);
+    expect(archive.auditModel.defaultOperationalDate).toBe('2026-08-28');
+
+    const august28 = archive.auditModel.dailyAudits.find(audit => audit.operationalDate === '2026-08-28');
+    expect(august28).toMatchObject({
+      operationalDate: '2026-08-28',
+      verifyingSummary: undefined,
+      isProvisional: false,
+      excludedAfterCutoffCount: 0,
+      verdict: 'MISSING_SUMMARY',
+      summaryComparison: {
+        productionExposureQuantity: 1,
+        summaryQuantity: 0,
+        paidQuantity: 0,
+        summaryRevenue: 0
+      }
+    });
+    expect(august28?.orderTimelines).toHaveLength(1);
+    expect(august28?.printCoverageGaps).toEqual([
+      {
+        id: '2026-08-28:POS-260828-1:Espresso:missing-final-paid-bill',
+        orderKey: '2026-08-28:POS-260828-1',
+        normalizedProduct: 'Espresso',
+        exposureQuantity: 1,
+        summaryQuantity: 0,
+        reason: 'MISSING_FINAL_PAID_BILL'
+      }
+    ]);
+  });
+
+  it('selects the latest summary by capture time while preserving duplicate delivery history', async () => {
+    const largerOlderSummary = makeDailySummary('27/08/2026', [
+      'x1 Latte / 35.000',
+      'x1 Club Sandwich / 100.000',
+      'x1 Garden Salad / 65.000'
+    ]);
+    const latestSummary = makeDailySummary('27/08/2026', [
+      'x2 Espresso / 70.000'
+    ]);
+
+    const zipBuffer = await buildZip([
+      makeCapture('summary-latest-retry', '2026-08-27T10:00:05.000Z', 'summary-latest-retry.raw', latestSummary),
+      makeCapture('summary-latest', '2026-08-27T10:00:00.000Z', 'summary-latest.raw', latestSummary),
+      makeCapture('summary-larger-older', '2026-08-27T09:00:00.000Z', 'summary-larger-older.raw', largerOlderSummary)
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'latest-summary.zip');
+    const august27 = archive.auditModel.dailyAudits.find(audit => audit.operationalDate === '2026-08-27');
+
+    expect(august27?.verifyingSummary).toMatchObject({
+      sourceCaptureId: 'summary-latest',
+      capturedAt: '2026-08-27T10:00:00.000Z',
+      totalItemsSold: 2,
+      totalSalesRevenue: 70000,
+      deliveryCount: 3,
+      uniquePayloadCount: 2
+    });
+    expect(august27?.summaryComparison).toMatchObject({
+      summaryQuantity: 2,
+      summaryRevenue: 70000
+    });
+    expect(august27).toMatchObject({
+      isProvisional: false,
+      excludedAfterCutoffCount: 0
+    });
+    expect(august27?.verifyingSummary?.deliveries).toEqual([
+      {
+        sourceCaptureId: 'summary-larger-older',
+        capturedAt: '2026-08-27T09:00:00.000Z',
+        rawFileName: 'summary-larger-older.raw',
+        sha256: `sha-${largerOlderSummary}`,
+        isDuplicateDelivery: false,
+        duplicateOfId: undefined
+      },
+      {
+        sourceCaptureId: 'summary-latest',
+        capturedAt: '2026-08-27T10:00:00.000Z',
+        rawFileName: 'summary-latest.raw',
+        sha256: `sha-${latestSummary}`,
+        isDuplicateDelivery: false,
+        duplicateOfId: undefined
+      },
+      {
+        sourceCaptureId: 'summary-latest-retry',
+        capturedAt: '2026-08-27T10:00:05.000Z',
+        rawFileName: 'summary-latest-retry.raw',
+        sha256: `sha-${latestSummary}`,
+        isDuplicateDelivery: true,
+        duplicateOfId: 'summary-latest'
+      }
+    ]);
+  });
+
+  it('breaks equal summary capture-time ties without depending on archive order', async () => {
+    const summaryA = makeDailySummary('27/08/2026', [
+      'x1 Americano / 35.000'
+    ]);
+    const summaryB = makeDailySummary('27/08/2026', [
+      'x2 Americano / 70.000'
+    ]);
+
+    const buildArchive = async (captures: ReturnType<typeof makeCapture>[]) =>
+      parseAuditZipArchive(await buildZip(captures), 'equal-time-summary.zip');
+
+    const firstArchive = await buildArchive([
+      makeCapture('summary-b', '2026-08-27T10:00:00.000Z', 'summary-b.raw', summaryB),
+      makeCapture('summary-a', '2026-08-27T10:00:00.000Z', 'summary-a.raw', summaryA)
+    ]);
+    const secondArchive = await buildArchive([
+      makeCapture('summary-a', '2026-08-27T10:00:00.000Z', 'summary-a.raw', summaryA),
+      makeCapture('summary-b', '2026-08-27T10:00:00.000Z', 'summary-b.raw', summaryB)
+    ]);
+
+    const firstAudit = firstArchive.auditModel.dailyAudits.find(audit => audit.operationalDate === '2026-08-27');
+    const secondAudit = secondArchive.auditModel.dailyAudits.find(audit => audit.operationalDate === '2026-08-27');
+
+    expect(firstAudit?.verifyingSummary?.sourceCaptureId).toBe('summary-b');
+    expect(secondAudit?.verifyingSummary?.sourceCaptureId).toBe('summary-b');
+    expect(firstAudit?.summaryComparison.summaryQuantity).toBe(2);
+    expect(secondAudit?.summaryComparison.summaryQuantity).toBe(2);
   });
 });

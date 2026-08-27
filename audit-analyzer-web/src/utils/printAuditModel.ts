@@ -23,7 +23,10 @@ type ProductAccumulator = {
 };
 
 function compareCapturedAt(a: { capturedAt: string }, b: { capturedAt: string }): number {
-  return new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime();
+  const timeDiff = new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime();
+  if (timeDiff !== 0) return timeDiff;
+
+  return a.capturedAt.localeCompare(b.capturedAt);
 }
 
 function getSummaryQuantity(summary: NormalizedEvidence | undefined, product: string): number {
@@ -35,14 +38,51 @@ function getSummaryRevenue(summary: NormalizedEvidence | undefined): number {
   return summary?.itemLines.reduce((total, item) => total + (item.totalPrice ?? 0), 0) ?? 0;
 }
 
+function compareSummaryCandidates(a: NormalizedEvidence, b: NormalizedEvidence): number {
+  const capturedAtDiff = compareCapturedAt(a, b);
+  if (capturedAtDiff !== 0) return capturedAtDiff;
+
+  return a.sourceCaptureId.localeCompare(b.sourceCaptureId)
+    || a.rawFileName.localeCompare(b.rawFileName);
+}
+
+function getCanonicalSummarySnapshots(summaries: NormalizedEvidence[]): NormalizedEvidence[] {
+  const byPayload = new Map<string, NormalizedEvidence>();
+
+  for (const summary of summaries) {
+    const existing = byPayload.get(summary.sha256);
+    if (!existing || compareSummaryCandidates(summary, existing) < 0) {
+      byPayload.set(summary.sha256, summary);
+    }
+  }
+
+  return Array.from(byPayload.values()).sort(compareSummaryCandidates);
+}
+
+function countsTowardPostSummaryCutoff(event: NormalizedEvidence): boolean {
+  return event.eventKind !== 'DAILY_SALES_SUMMARY_SNAPSHOT';
+}
+
 function summarizeLatestSummary(summary: NormalizedEvidence, allSummaries: NormalizedEvidence[]): AuditSummarySnapshot {
+  const deliveries = allSummaries
+    .map(item => ({
+      sourceCaptureId: item.sourceCaptureId,
+      capturedAt: item.capturedAt,
+      rawFileName: item.rawFileName,
+      sha256: item.sha256,
+      isDuplicateDelivery: item.isDuplicateDelivery,
+      duplicateOfId: item.duplicateOfId
+    }))
+    .sort(compareCapturedAt);
+
   return {
     sourceCaptureId: summary.sourceCaptureId,
     capturedAt: summary.capturedAt,
     totalItemsSold: summary.itemLines.reduce((total, item) => total + item.quantity, 0),
     totalSalesRevenue: getSummaryRevenue(summary),
     deliveryCount: allSummaries.length,
-    uniquePayloadCount: new Set(allSummaries.map(item => item.sha256)).size
+    uniquePayloadCount: new Set(allSummaries.map(item => item.sha256)).size,
+    deliveries
   };
 }
 
@@ -276,11 +316,15 @@ function chooseVerdict(
 function buildDailyAudit(operationalDate: string, evidence: NormalizedEvidence[]): DailyPrintAudit {
   const summaries = evidence
     .filter(event => event.eventKind === 'DAILY_SALES_SUMMARY_SNAPSHOT')
-    .sort(compareCapturedAt);
-  const verifyingSummary = summaries.at(-1);
+    .sort(compareSummaryCandidates);
+  const uniqueSummarySnapshots = getCanonicalSummarySnapshots(summaries);
+  const verifyingSummary = uniqueSummarySnapshots.at(-1);
   const cutoffMs = verifyingSummary ? new Date(verifyingSummary.capturedAt).getTime() : Number.POSITIVE_INFINITY;
   const cutoffEvidence = evidence.filter(event => new Date(event.capturedAt).getTime() <= cutoffMs);
-  const excludedAfterCutoffCount = evidence.length - cutoffEvidence.length;
+  const excludedAfterCutoffCount = evidence
+    .filter(countsTowardPostSummaryCutoff)
+    .filter(event => new Date(event.capturedAt).getTime() > cutoffMs)
+    .length;
   const groupedOrders = new Map<string, NormalizedEvidence[]>();
 
   for (const event of cutoffEvidence) {
@@ -325,14 +369,9 @@ function buildDailyAudit(operationalDate: string, evidence: NormalizedEvidence[]
 
 export function buildPrintAuditModel(normalizedEvidence: NormalizedEvidence[]): PrintAuditModel {
   const byDate = new Map<string, NormalizedEvidence[]>();
-  const summaryDates = new Set(
-    normalizedEvidence
-      .filter(evidence => evidence.eventKind === 'DAILY_SALES_SUMMARY_SNAPSHOT' && evidence.operationalDate)
-      .map(evidence => evidence.operationalDate!)
-  );
 
   for (const evidence of normalizedEvidence) {
-    if (!evidence.operationalDate || !summaryDates.has(evidence.operationalDate)) continue;
+    if (!evidence.operationalDate) continue;
     const existing = byDate.get(evidence.operationalDate) ?? [];
     existing.push(evidence);
     byDate.set(evidence.operationalDate, existing);

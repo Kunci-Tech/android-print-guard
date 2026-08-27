@@ -204,6 +204,16 @@ export interface AuditSummarySnapshot {
   totalSalesRevenue: number;
   deliveryCount: number;
   uniquePayloadCount: number;
+  deliveries: AuditSummaryDelivery[];
+}
+
+export interface AuditSummaryDelivery {
+  sourceCaptureId: string;
+  capturedAt: string;
+  rawFileName: string;
+  sha256: string;
+  isDuplicateDelivery: boolean;
+  duplicateOfId?: string;
 }
 
 export interface OrderEvidenceTimeline {
