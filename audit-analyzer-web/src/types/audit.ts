@@ -170,6 +170,97 @@ export interface ReconciliationReport {
   threatMessage?: string;
 }
 
+export type DailyAuditVerdict =
+  | 'CLEAN'
+  | 'HIGH_PRIORITY_FINDINGS'
+  | 'INCOMPLETE_COVERAGE'
+  | 'PROVISIONAL'
+  | 'MISSING_SUMMARY';
+
+export interface PrintAuditModel {
+  availableOperationalDates: string[];
+  defaultOperationalDate?: string;
+  dailyAudits: DailyPrintAudit[];
+}
+
+export interface DailyPrintAudit {
+  operationalDate: string;
+  verdict: DailyAuditVerdict;
+  verifyingSummary?: AuditSummarySnapshot;
+  isProvisional: boolean;
+  excludedAfterCutoffCount: number;
+  orderTimelines: OrderEvidenceTimeline[];
+  findings: AuditFinding[];
+  printCoverageGaps: PrintCoverageGap[];
+  voidEvidence: NormalizedEvidence[];
+  complimentaryEvidence: NormalizedEvidence[];
+  summaryComparison: AuditSummaryComparison;
+}
+
+export interface AuditSummarySnapshot {
+  sourceCaptureId: string;
+  capturedAt: string;
+  totalItemsSold: number;
+  totalSalesRevenue: number;
+  deliveryCount: number;
+  uniquePayloadCount: number;
+}
+
+export interface OrderEvidenceTimeline {
+  orderKey: string;
+  operationalDate: string;
+  posOrderNumber: string;
+  events: NormalizedEvidence[];
+  exposures: FulfillmentExposure[];
+  hasFinalPaidBill: boolean;
+  latestPaidEvidenceId?: string;
+}
+
+export interface FulfillmentExposure {
+  normalizedProduct: string;
+  department: NormalizedDepartment;
+  exposedQuantity: number;
+  paidQuantity: number;
+  summaryQuantity: number;
+  sourceEvidenceIds: string[];
+  voidEvidenceIds: string[];
+}
+
+export interface AuditFinding {
+  id: string;
+  kind: 'POST_ROUTING_REDUCTION';
+  severity: 'HIGH';
+  orderKey: string;
+  posOrderNumber: string;
+  normalizedProduct: string;
+  department: NormalizedDepartment;
+  eventTime: string;
+  exposureQuantity: number;
+  posQuantity: number;
+  reductionQuantity: number;
+  estimatedValue: number;
+  evidenceIds: string[];
+  paymentMethod?: string;
+  cashier?: string;
+  posUser?: string;
+}
+
+export interface PrintCoverageGap {
+  id: string;
+  orderKey?: string;
+  normalizedProduct: string;
+  exposureQuantity: number;
+  summaryQuantity: number;
+  reason: 'MISSING_FINAL_PAID_BILL' | 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION';
+}
+
+export interface AuditSummaryComparison {
+  productionExposureQuantity: number;
+  summaryQuantity: number;
+  paidQuantity: number;
+  summaryRevenue: number;
+}
+
 export interface SynthesisMetrics {
   rawTotalCaptures: number;
   rawTotalBytes: number;
@@ -201,6 +292,7 @@ export interface ParsedAuditArchive {
   auditEvents: AuditEvent[];
   synthesizedCaptures: SynthesizedCapture[];
   normalizedEvidence: NormalizedEvidence[];
+  auditModel: PrintAuditModel;
   metrics: SynthesisMetrics;
   transactionGroups: TransactionGroup[];
   itemSalesSummary: ItemSalesSummary[];

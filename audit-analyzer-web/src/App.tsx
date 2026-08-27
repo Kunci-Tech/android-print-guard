@@ -1,31 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { Header } from './components/Header';
-import { SynthesisSummaryBanner } from './components/SynthesisSummaryBanner';
 import { FileUpload } from './components/FileUpload';
-import { AutoGrabConfig } from './components/AutoGrabConfig';
-import { AnalyticsDashboard } from './components/AnalyticsDashboard';
-import { SecurityAuditLogs } from './components/SecurityAuditLogs';
-import { ReceiptInspector } from './components/ReceiptInspector';
-import { ItemSalesAudit } from './components/ItemSalesAudit';
-import { OrderMasterLog } from './components/OrderMasterLog';
-import { ReconciliationThreatDashboard } from './components/ReconciliationThreatDashboard';
-
+import { DailyAuditWorkspace } from './components/DailyAuditWorkspace';
 import { parseAuditZipArchive } from './utils/zipParser';
 import type { ParsedAuditArchive } from './types/audit';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'reconcile' | 'items' | 'orders' | 'analytics' | 'receipts' | 'audit' | 'autograb' | 'upload'>('reconcile');
-  const [synthesisEnabled] = useState<boolean>(true);
   const [currentArchive, setCurrentArchive] = useState<ParsedAuditArchive | null>(null);
+  const [selectedOperationalDate, setSelectedOperationalDate] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [autoGrabStatus, setAutoGrabStatus] = useState<string>('IDLE');
 
-  // Auto-load preset backup_20260826_205024.zip on initial launch if available
-  useEffect(() => {
-    loadPresetSampleBackup();
+  const applyArchive = useCallback((archive: ParsedAuditArchive) => {
+    setCurrentArchive(archive);
+    setSelectedOperationalDate(archive.auditModel.defaultOperationalDate ?? archive.auditModel.availableOperationalDates[0] ?? '');
   }, []);
 
-  const loadPresetSampleBackup = async () => {
+  const loadPresetSampleBackup = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetch('/sample_backup.zip');
@@ -34,14 +24,13 @@ export function App() {
       }
       const buffer = await response.arrayBuffer();
       const parsed = await parseAuditZipArchive(buffer, 'backup_20260826_205024.zip');
-      setCurrentArchive(parsed);
-      setActiveTab('reconcile');
+      applyArchive(parsed);
     } catch (err) {
       console.error('Error loading preset sample backup', err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [applyArchive]);
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -49,8 +38,7 @@ export function App() {
     setIsLoading(true);
     try {
       const parsed = await parseAuditZipArchive(file, file.name);
-      setCurrentArchive(parsed);
-      setActiveTab('reconcile');
+      applyArchive(parsed);
     } catch (err) {
       console.error('Failed to parse uploaded backup file', err);
     } finally {
@@ -58,106 +46,30 @@ export function App() {
     }
   };
 
-  const handleArchiveLoaded = (archive: ParsedAuditArchive) => {
-    setCurrentArchive(archive);
-    setActiveTab('reconcile');
-  };
-
-  const pinFailedCount = currentArchive 
-    ? currentArchive.auditEvents.filter(e => e.event_type.includes('PIN_FAIL')).length 
-    : 0;
-
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* Container */}
-      <div style={{ maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '0 24px 40px 24px' }}>
-        
-        {/* Navigation Header */}
-        <Header 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+    <div className="audit-app-shell">
+      <div className="audit-page">
+        <Header
           currentArchive={currentArchive}
           onFileUpload={handleFileUpload}
           onLoadSampleData={loadPresetSampleBackup}
           isLoading={isLoading}
-          autoGrabStatus={autoGrabStatus}
         />
 
-        {/* Upload View Tab */}
-        {activeTab === 'upload' && (
-          <FileUpload 
-            onArchiveParsed={handleArchiveLoaded}
+        {currentArchive && selectedOperationalDate ? (
+          <DailyAuditWorkspace
+            archive={currentArchive}
+            selectedDate={selectedOperationalDate}
+            onSelectedDateChange={setSelectedOperationalDate}
+          />
+        ) : (
+          <FileUpload
+            onArchiveParsed={applyArchive}
             onLoadSampleData={loadPresetSampleBackup}
             isLoading={isLoading}
           />
         )}
-
-        {/* Active Archive View */}
-        {currentArchive && activeTab !== 'upload' && (
-          <>
-            {/* Synthesizer Banner */}
-            <SynthesisSummaryBanner 
-              metrics={currentArchive.metrics}
-              synthesisEnabled={synthesisEnabled}
-            />
-
-            {/* Tab Views */}
-            {activeTab === 'reconcile' && (
-              <ReconciliationThreatDashboard 
-                reconciliation={currentArchive.reconciliation}
-                fileName={currentArchive.fileName}
-              />
-            )}
-
-            {activeTab === 'items' && (
-              <ItemSalesAudit 
-                items={currentArchive.itemSalesSummary}
-                fileName={currentArchive.fileName}
-              />
-            )}
-
-            {activeTab === 'orders' && (
-              <OrderMasterLog 
-                groups={currentArchive.transactionGroups}
-                fileName={currentArchive.fileName}
-              />
-            )}
-
-            {activeTab === 'analytics' && (
-              <AnalyticsDashboard 
-                metrics={currentArchive.metrics}
-                synthesisEnabled={synthesisEnabled}
-                totalAuditEvents={currentArchive.auditEvents.length}
-                pinFailedCount={pinFailedCount}
-              />
-            )}
-
-            {activeTab === 'receipts' && (
-              <ReceiptInspector 
-                captures={currentArchive.synthesizedCaptures}
-                synthesisEnabled={synthesisEnabled}
-              />
-            )}
-
-            {activeTab === 'audit' && (
-              <SecurityAuditLogs 
-                events={currentArchive.auditEvents}
-              />
-            )}
-
-            {activeTab === 'autograb' && (
-              <AutoGrabConfig 
-                onArchiveGrabbed={handleArchiveLoaded}
-                autoGrabStatus={autoGrabStatus}
-                setAutoGrabStatus={setAutoGrabStatus}
-              />
-            )}
-          </>
-        )}
-
       </div>
-
     </div>
   );
 }

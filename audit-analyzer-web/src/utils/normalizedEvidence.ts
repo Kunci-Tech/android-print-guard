@@ -156,6 +156,17 @@ function buildItemLines(capture: SynthesizedCapture): NormalizedEvidenceItemLine
   return [];
 }
 
+function getPaymentMethod(capture: SynthesizedCapture, parsedPaymentMethod?: string): string | undefined {
+  if (parsedPaymentMethod) return parsedPaymentMethod;
+
+  const tenderIndex = capture.parsedReceipt.lines.findIndex(line => /^Tender$/i.test(line.trim()));
+  if (tenderIndex >= 0) {
+    return capture.parsedReceipt.lines[tenderIndex + 1]?.trim() || undefined;
+  }
+
+  return undefined;
+}
+
 export function buildNormalizedEvidence(synthesizedCaptures: SynthesizedCapture[]): NormalizedEvidence[] {
   return synthesizedCaptures.map(capture => {
     const department = normalizeDepartment(capture.parsedReceipt.department);
@@ -189,7 +200,7 @@ export function buildNormalizedEvidence(synthesizedCaptures: SynthesizedCapture[
         salesType: header?.salesType,
         posUser: header?.user,
         cashier: header?.cashier,
-        paymentMethod: header?.paymentMethod
+        paymentMethod: getPaymentMethod(capture, header?.paymentMethod)
       }
     };
   });
