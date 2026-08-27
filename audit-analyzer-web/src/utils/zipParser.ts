@@ -3,6 +3,7 @@ import type { PrintJobCapture, AuditEvent, ParsedAuditArchive } from '../types/a
 import { parseESCPOSBytes } from './escposParser';
 import { synthesizeCaptures } from './dataSynthesizer';
 import { groupCapturesByTransaction } from './receiptItemParser';
+import { buildNormalizedEvidence } from './normalizedEvidence';
 
 export async function parseAuditZipArchive(fileOrBuffer: File | ArrayBuffer, fileName: string): Promise<ParsedAuditArchive> {
   const zip = await JSZip.loadAsync(fileOrBuffer);
@@ -58,6 +59,7 @@ export async function parseAuditZipArchive(fileOrBuffer: File | ArrayBuffer, fil
 
   // 3. Synthesize & Deduplicate Data
   const { synthesizedCaptures, metrics } = synthesizeCaptures(rawCaptures, rawBytesMap, parsedMap);
+  const normalizedEvidence = buildNormalizedEvidence(synthesizedCaptures);
 
   // 4. Group by POS Order ID, Parse Itemized Sales & Compute Reconciliation Report
   const { transactionGroups, itemSalesSummary, reconciliation } = groupCapturesByTransaction(synthesizedCaptures);
@@ -69,6 +71,7 @@ export async function parseAuditZipArchive(fileOrBuffer: File | ArrayBuffer, fil
     rawBytesMap,
     auditEvents,
     synthesizedCaptures,
+    normalizedEvidence,
     metrics,
     transactionGroups,
     itemSalesSummary,

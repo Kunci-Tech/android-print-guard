@@ -86,12 +86,12 @@ export function synthesizeCaptures(
       testPrintCount++;
     } else if (parsed.department === 'DAILY SALES SUMMARY' || parsed.asciiText.includes('RINGKASAN PENJUALAN')) {
       category = 'DAILY_SUMMARY';
-    } else if (parsed.department === 'MAIN POS BILL' || parsed.asciiText.includes('KK') || parsed.asciiText.includes('Phone:')) {
+    } else if (parsed.department === 'MAIN POS BILL') {
       category = 'CUSTOMER_BILL';
-    } else if (parsed.department || parsed.asciiText.includes('BAR') || parsed.asciiText.includes('KITCHEN') || parsed.asciiText.includes('CAPTAIN ORDER')) {
+    } else if (parsed.department === 'BAR' || parsed.department === 'HOT KITCHEN' || parsed.department === 'COLD KITCHEN' || parsed.department === 'CAPTAIN ORDER') {
       category = 'KITCHEN_TICKET';
     } else {
-      category = 'CUSTOMER_BILL';
+      category = 'UNKNOWN';
     }
 
     categoryCounts[category]++;

@@ -29,22 +29,8 @@ export function parseESCPOSBytes(rawBytes: Uint8Array): ESCPOSParsedReceipt {
 
   const asciiText = lines.join('\n');
 
-  // Detect Department Header
-  let department: string | undefined = undefined;
   const fullUpper = asciiText.toUpperCase();
-  if (fullUpper.includes('BAR')) {
-    department = 'BAR';
-  } else if (fullUpper.includes('HOT KITCHEN')) {
-    department = 'HOT KITCHEN';
-  } else if (fullUpper.includes('COLD KITCHEN')) {
-    department = 'COLD KITCHEN';
-  } else if (fullUpper.includes('CAPTAIN ORDER')) {
-    department = 'CAPTAIN ORDER';
-  } else if (fullUpper.includes('RINGKASAN PENJUALAN')) {
-    department = 'DAILY SALES SUMMARY';
-  } else if (fullUpper.includes('KUNCI KUPPI') || fullUpper.includes('KK')) {
-    department = 'MAIN POS BILL';
-  }
+  const department = detectExplicitDepartment(lines);
 
   // Extract Order / Table Number if available
   let tableNumber: string | undefined = undefined;
@@ -55,8 +41,8 @@ export function parseESCPOSBytes(rawBytes: Uint8Array): ESCPOSParsedReceipt {
     if (tableMatch) {
       tableNumber = tableMatch[1];
     }
-    const orderMatch = line.match(/(?:Order|Nota|Bill|No)\s*[:#]?\s*([A-Za-z0-9-]+)/i);
-    if (orderMatch) {
+    const orderMatch = line.match(/^Order\s+Number\s*:\s*(POS-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+)\b/i);
+    if (orderMatch && !orderNumber) {
       orderNumber = orderMatch[1];
     }
   }
@@ -74,6 +60,33 @@ export function parseESCPOSBytes(rawBytes: Uint8Array): ESCPOSParsedReceipt {
     orderNumber,
     isTestPrint
   };
+}
+
+function detectExplicitDepartment(lines: string[]): string | undefined {
+  for (const line of lines.slice(0, 8)) {
+    const normalized = line.trim().replace(/\s+/g, ' ').toUpperCase();
+
+    if (normalized === 'BAR') {
+      return 'BAR';
+    }
+    if (normalized === 'HOT KITCHEN') {
+      return 'HOT KITCHEN';
+    }
+    if (normalized === 'COLD KITCHEN') {
+      return 'COLD KITCHEN';
+    }
+    if (normalized === 'CAPTAIN ORDER') {
+      return 'CAPTAIN ORDER';
+    }
+    if (normalized.includes('RINGKASAN PENJUALAN')) {
+      return 'DAILY SALES SUMMARY';
+    }
+    if (normalized.includes('KUNCI KUPPI')) {
+      return 'MAIN POS BILL';
+    }
+  }
+
+  return undefined;
 }
 
 function cleanLine(bytes: number[]): string {

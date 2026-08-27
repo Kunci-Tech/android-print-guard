@@ -19,6 +19,25 @@ export interface AuditEvent {
 
 export type ReceiptCategory = 'CUSTOMER_BILL' | 'KITCHEN_TICKET' | 'DAILY_SUMMARY' | 'TEST_PRINT' | 'UNKNOWN';
 
+export type NormalizedDepartment =
+  | 'BAR'
+  | 'HOT_KITCHEN'
+  | 'COLD_KITCHEN'
+  | 'CAPTAIN_ORDER'
+  | 'UNKNOWN';
+
+export type NormalizedEventKind =
+  | 'PRODUCTION_TICKET'
+  | 'ADD_ITEM'
+  | 'VOID_ITEM'
+  | 'CAPTAIN_ORDER'
+  | 'PRELIMINARY_BILL'
+  | 'FINAL_PAID_BILL'
+  | 'BILL_REPRINT'
+  | 'DAILY_SALES_SUMMARY_SNAPSHOT'
+  | 'COMPLIMENTARY_ACTIVITY'
+  | 'NON_AUDIT_EVIDENCE';
+
 export interface ESCPOSParsedReceipt {
   rawBytes: Uint8Array;
   asciiText: string;
@@ -36,6 +55,48 @@ export interface SynthesizedCapture extends PrintJobCapture {
   duplicateOfId?: string;
   retryTimeDiffSeconds?: number;
   isSynthesizedValid: boolean;
+}
+
+export interface NormalizedEvidence {
+  id: string;
+  sourceCaptureId: string;
+  rawFileName: string;
+  sha256: string;
+  capturedAt: string;
+  category: ReceiptCategory;
+  eventKind: NormalizedEventKind;
+  operationalDate?: string;
+  posOrderNumber?: string;
+  normalizedDepartment: NormalizedDepartment;
+  itemLines: NormalizedEvidenceItemLine[];
+  isDuplicateDelivery: boolean;
+  duplicateOfId?: string;
+  rawEvidence: {
+    captureId: string;
+    rawFileName: string;
+    sha256: string;
+    bytes: number;
+  };
+  metadata: {
+    sourceAddress: string;
+    printerIp: string;
+    tableNumber?: string;
+    customer?: string;
+    salesType?: string;
+    posUser?: string;
+    cashier?: string;
+    paymentMethod?: string;
+  };
+}
+
+export interface NormalizedEvidenceItemLine {
+  normalizedProduct: string;
+  quantity: number;
+  quantityRole: 'BASE' | 'ADDITION' | 'VOID';
+  variant?: string;
+  unitPrice?: number;
+  totalPrice?: number;
+  sourceLine?: string;
 }
 
 // === Transaction Grouping & Item Parsing Types ===
@@ -139,6 +200,7 @@ export interface ParsedAuditArchive {
   rawBytesMap: Map<string, Uint8Array>;
   auditEvents: AuditEvent[];
   synthesizedCaptures: SynthesizedCapture[];
+  normalizedEvidence: NormalizedEvidence[];
   metrics: SynthesisMetrics;
   transactionGroups: TransactionGroup[];
   itemSalesSummary: ItemSalesSummary[];
