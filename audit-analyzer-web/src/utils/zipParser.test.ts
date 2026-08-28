@@ -664,7 +664,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         summaryQuantity: 0,
         unitPrice: 0,
         estimatedValue: 0,
-        reason: 'MISSING_FINAL_PAID_BILL'
+        reason: 'MISSING_FINAL_PAID_BILL',
+        sourceEvidenceIds: ['ticket-28']
       }
     ]);
   });
@@ -741,7 +742,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         unitPrice: 35000,
         discrepancyQuantity: -1,
         discrepancyRevenue: -35000,
-        status: 'EXCESS_PRODUCTION'
+        status: 'EXCESS_PRODUCTION',
+        evidenceIds: ['bar-1', 'bar-2', 'summary-1']
       },
       {
         productKey: 'Matcha',
@@ -752,7 +754,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         unitPrice: 40000,
         discrepancyQuantity: 1,
         discrepancyRevenue: 40000,
-        status: 'MISSING_PRODUCTION'
+        status: 'MISSING_PRODUCTION',
+        evidenceIds: ['summary-1']
       }
     ]);
   });

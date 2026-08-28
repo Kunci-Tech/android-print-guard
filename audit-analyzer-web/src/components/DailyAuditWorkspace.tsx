@@ -94,16 +94,55 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
     }
   };
 
-  const handleOpenModalForOrderOrProduct = (posOrderNumber?: string, productName?: string) => {
-    const matchingCaptures = archive.synthesizedCaptures.filter(c => {
-      const matchOrder = posOrderNumber ? c.parsedReceipt.orderNumber === posOrderNumber : false;
-      const matchProduct = productName ? c.parsedReceipt.asciiText.toLowerCase().includes(productName.toLowerCase()) : false;
-      return matchOrder || matchProduct;
-    });
+  const handleOpenModalForOrderOrProduct = (
+    posOrderNumber?: string,
+    productName?: string,
+    evidenceIds?: string[]
+  ) => {
+    if (evidenceIds && evidenceIds.length > 0) {
+      const directCaptures = archive.synthesizedCaptures.filter(c => evidenceIds.includes(c.id));
+      if (directCaptures.length > 0) {
+        setModalTargetCapture(directCaptures[0]);
+        setModalRelatedCaptures(directCaptures);
+        return;
+      }
+    }
 
-    if (matchingCaptures.length > 0) {
-      setModalTargetCapture(matchingCaptures[0]);
-      setModalRelatedCaptures(matchingCaptures);
+    if (posOrderNumber) {
+      const orderCaptures = archive.synthesizedCaptures.filter(c => c.parsedReceipt.orderNumber === posOrderNumber);
+      if (orderCaptures.length > 0) {
+        setModalTargetCapture(orderCaptures[0]);
+        setModalRelatedCaptures(orderCaptures);
+        return;
+      }
+    }
+
+    if (productName) {
+      const tokens = productName.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 2);
+      const productCaptures = archive.synthesizedCaptures.filter(c => {
+        const textLower = c.parsedReceipt.asciiText.toLowerCase();
+        return tokens.length > 0 && tokens.every(token => textLower.includes(token));
+      });
+
+      if (productCaptures.length > 0) {
+        setModalTargetCapture(productCaptures[0]);
+        setModalRelatedCaptures(productCaptures);
+        return;
+      }
+    }
+
+    if (audit?.verifyingSummary) {
+      const summaryCapture = archive.synthesizedCaptures.find(c => c.id === audit.verifyingSummary?.sourceCaptureId);
+      if (summaryCapture) {
+        setModalTargetCapture(summaryCapture);
+        setModalRelatedCaptures([summaryCapture]);
+        return;
+      }
+    }
+
+    if (archive.synthesizedCaptures.length > 0) {
+      setModalTargetCapture(archive.synthesizedCaptures[0]);
+      setModalRelatedCaptures(archive.synthesizedCaptures);
     }
   };
 
@@ -579,7 +618,7 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
               <div
                 key={gap.id}
                 className="glass-panel audit-gap-card"
-                onClick={() => handleOpenModalForOrderOrProduct(gap.posOrderNumber, gap.normalizedProduct)}
+                onClick={() => handleOpenModalForOrderOrProduct(gap.posOrderNumber, gap.normalizedProduct, gap.sourceEvidenceIds)}
                 style={{ cursor: 'pointer' }}
                 title="Click to view raw ESC/POS evidence modal"
               >

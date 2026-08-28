@@ -242,7 +242,8 @@ function buildOrderTimeline(
           summaryQuantity,
           unitPrice,
           estimatedValue: exposedQuantity * unitPrice,
-          reason: 'MISSING_FINAL_PAID_BILL'
+          reason: 'MISSING_FINAL_PAID_BILL',
+          sourceEvidenceIds: [...accumulator.sourceEvidenceIds]
         });
       }
     } else if (paidQuantity < exposedQuantity) {
@@ -345,7 +346,8 @@ function buildSummaryExcessGaps(
         summaryQuantity: item.quantity,
         unitPrice,
         estimatedValue: excessQty * unitPrice,
-        reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION'
+        reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION',
+        sourceEvidenceIds: [verifyingSummary.sourceCaptureId]
       };
     });
 }
@@ -405,6 +407,7 @@ function buildItemComparisons(
 ): DailyItemComparison[] {
   const routedMap = new Map<string, number>();
   const paidMap = new Map<string, number>();
+  const evidenceIdsMap = new Map<string, Set<string>>();
 
   for (const order of orderTimelines) {
     for (const exposure of order.exposures) {
@@ -416,6 +419,11 @@ function buildItemComparisons(
         exposure.normalizedProduct,
         (paidMap.get(exposure.normalizedProduct) ?? 0) + exposure.paidQuantity
       );
+
+      const set = evidenceIdsMap.get(exposure.normalizedProduct) ?? new Set<string>();
+      exposure.sourceEvidenceIds.forEach(id => set.add(id));
+      exposure.voidEvidenceIds.forEach(id => set.add(id));
+      evidenceIdsMap.set(exposure.normalizedProduct, set);
     }
   }
 
@@ -426,6 +434,10 @@ function buildItemComparisons(
         item.normalizedProduct,
         (summaryMap.get(item.normalizedProduct) ?? 0) + item.quantity
       );
+
+      const set = evidenceIdsMap.get(item.normalizedProduct) ?? new Set<string>();
+      set.add(verifyingSummary.sourceCaptureId);
+      evidenceIdsMap.set(item.normalizedProduct, set);
     }
   }
 
@@ -453,6 +465,8 @@ function buildItemComparisons(
       status = 'EXCESS_PRODUCTION';
     }
 
+    const evidenceIds = Array.from(evidenceIdsMap.get(product) ?? []);
+
     result.push({
       productKey: product,
       normalizedProduct: product,
@@ -462,7 +476,8 @@ function buildItemComparisons(
       unitPrice,
       discrepancyQuantity,
       discrepancyRevenue,
-      status
+      status,
+      evidenceIds
     });
   }
 

@@ -195,6 +195,7 @@ export interface DailyItemComparison {
   discrepancyQuantity: number;
   discrepancyRevenue: number;
   status: 'MATCH' | 'MISSING_PRODUCTION' | 'EXCESS_PRODUCTION';
+  evidenceIds?: string[];
 }
 
 export interface DailyPrintAudit {
@@ -281,6 +282,7 @@ export interface PrintCoverageGap {
   unitPrice?: number;
   estimatedValue?: number;
   reason: 'MISSING_FINAL_PAID_BILL' | 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION';
+  sourceEvidenceIds?: string[];
 }
 
 export interface AuditSummaryComparison {
