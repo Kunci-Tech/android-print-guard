@@ -144,26 +144,36 @@ function buildBillItemLines(capture: SynthesizedCapture): NormalizedEvidenceItem
   const header = parseOrderHeaderAndItems(capture.parsedReceipt.asciiText);
   if (!header) return [];
 
-  return header.items.map(item => ({
-    normalizedProduct: normalizeProductName(`${item.itemName}${item.variant ? ` / ${item.variant}` : ''}`),
-    quantity: item.quantity,
-    quantityRole: 'BASE',
-    variant: item.variant || undefined,
-    unitPrice: item.unitPrice,
-    totalPrice: item.totalPrice,
-    ...(item.isModifier ? { isModifier: true } : {})
-  }));
+  return header.items.map(item => {
+    const norm = normalizeProductName(`${item.itemName}${item.variant ? ` / ${item.variant}` : ''}`);
+    const lineIdx = capture.parsedReceipt.lines.findIndex(l => l.toLowerCase().includes(item.itemName.toLowerCase()));
+    return {
+      normalizedProduct: norm,
+      quantity: item.quantity,
+      quantityRole: 'BASE',
+      variant: item.variant || undefined,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      lineIndex: lineIdx >= 0 ? lineIdx : undefined,
+      ...(item.isModifier ? { isModifier: true } : {})
+    };
+  });
 }
 
 function buildSummaryItemLines(capture: SynthesizedCapture): NormalizedEvidenceItemLine[] {
   const summary = parseDailySalesSummaryReport(capture.parsedReceipt.asciiText);
 
-  return Array.from(summary.summaryItems.entries()).map(([product, item]) => ({
-    normalizedProduct: normalizeProductName(product),
-    quantity: item.qty,
-    quantityRole: 'BASE',
-    totalPrice: item.revenue
-  }));
+  return Array.from(summary.summaryItems.entries()).map(([product, item]) => {
+    const norm = normalizeProductName(product);
+    const lineIdx = capture.parsedReceipt.lines.findIndex(l => l.toLowerCase().includes(product.toLowerCase()));
+    return {
+      normalizedProduct: norm,
+      quantity: item.qty,
+      quantityRole: 'BASE',
+      totalPrice: item.revenue,
+      lineIndex: lineIdx >= 0 ? lineIdx : undefined
+    };
+  });
 }
 
 function isTicketHeaderLine(line: string): boolean {
@@ -176,7 +186,10 @@ function isSupportOnlyLine(line: string): boolean {
   return /^\[.+\]$/.test(trimmed)
     || /^[A-Za-z][A-Za-z ]+\s*:/i.test(trimmed)
     || /^(no|without|allergy|please|less|more|extra)\b/i.test(trimmed)
-    || /^void\b/i.test(trimmed);
+    || /^void\b/i.test(trimmed)
+    || /^DINE IN\b/i.test(trimmed)
+    || /^TAKE AWAY\b/i.test(trimmed)
+    || /^DELIVERY\b/i.test(trimmed);
 }
 
 function isLikelyTicketContinuationLine(line: string): boolean {
@@ -191,7 +204,8 @@ function getTicketProductContinuationLines(supportingLines: string[]): string[] 
 
 function toTicketItemLine(
   match: RegExpMatchArray,
-  supportingLines: string[]
+  supportingLines: string[],
+  lineIndex?: number
 ): NormalizedEvidenceItemLine {
   const quantityPrefix = match[1];
   const quantityRole = quantityPrefix === '+'
@@ -208,27 +222,32 @@ function toTicketItemLine(
     quantity: parseInt(match[2], 10),
     quantityRole,
     sourceLine: match[0],
-    supportingLines: supportingLines.length > 0 ? supportingLines : undefined
+    supportingLines: supportingLines.length > 0 ? supportingLines : undefined,
+    lineIndex
   };
 }
 
 function buildTicketItemLines(capture: SynthesizedCapture): NormalizedEvidenceItemLine[] {
   const itemLines: NormalizedEvidenceItemLine[] = [];
   let pendingMatch: RegExpMatchArray | undefined;
+  let pendingLineIndex: number | undefined;
   let supportingLines: string[] = [];
 
   const flushPending = () => {
     if (!pendingMatch) return;
-    itemLines.push(toTicketItemLine(pendingMatch, supportingLines));
+    itemLines.push(toTicketItemLine(pendingMatch, supportingLines, pendingLineIndex));
     pendingMatch = undefined;
+    pendingLineIndex = undefined;
     supportingLines = [];
   };
 
-  for (const line of capture.parsedReceipt.lines) {
+  for (let i = 0; i < capture.parsedReceipt.lines.length; i++) {
+    const line = capture.parsedReceipt.lines[i];
     const match = line.match(/^([x+-])([0-9]+)\s+(.+)$/i);
     if (match) {
       flushPending();
       pendingMatch = match;
+      pendingLineIndex = i;
     } else if (
       pendingMatch
       && !isTicketHeaderLine(line)

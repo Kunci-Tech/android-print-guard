@@ -209,6 +209,7 @@ function buildOrderTimeline(
     if (!latestPaid) {
       if (summary && summaryQuantity < exposedQuantity) {
         const reductionQuantity = exposedQuantity - summaryQuantity;
+        const primaryEv = sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId));
         findings.push({
           id: `${orderKey}:${accumulator.normalizedProduct}:summary-reduction`,
           kind: 'POST_ROUTING_REDUCTION',
@@ -217,7 +218,7 @@ function buildOrderTimeline(
           posOrderNumber,
           normalizedProduct: accumulator.normalizedProduct,
           department: accumulator.department,
-          eventTime: sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId))?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
+          eventTime: primaryEv?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
           exposureQuantity: exposedQuantity,
           posQuantity: summaryQuantity,
           reductionQuantity,
@@ -227,11 +228,14 @@ function buildOrderTimeline(
             ...accumulator.voidEvidenceIds,
             summary.sourceCaptureId
           ],
+          primaryCaptureId: primaryEv?.sourceCaptureId ?? accumulator.sourceEvidenceIds[0],
+          primaryFileName: primaryEv?.rawFileName,
           paymentMethod: undefined,
           cashier: undefined,
           posUser: undefined
         });
       } else {
+        const primaryEv = sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId));
         gaps.push({
           id: `${orderKey}:${accumulator.normalizedProduct}:missing-final-paid-bill`,
           orderKey,
@@ -243,11 +247,14 @@ function buildOrderTimeline(
           unitPrice,
           estimatedValue: exposedQuantity * unitPrice,
           reason: 'MISSING_FINAL_PAID_BILL',
-          sourceEvidenceIds: [...accumulator.sourceEvidenceIds]
+          sourceEvidenceIds: [...accumulator.sourceEvidenceIds],
+          primaryCaptureId: primaryEv?.sourceCaptureId ?? accumulator.sourceEvidenceIds[0],
+          primaryFileName: primaryEv?.rawFileName
         });
       }
     } else if (paidQuantity < exposedQuantity) {
       const reductionQuantity = exposedQuantity - paidQuantity;
+      const primaryEv = sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId));
       findings.push({
         id: `${orderKey}:${accumulator.normalizedProduct}:paid-reduction`,
         kind: 'POST_ROUTING_REDUCTION',
@@ -256,7 +263,7 @@ function buildOrderTimeline(
         posOrderNumber,
         normalizedProduct: accumulator.normalizedProduct,
         department: accumulator.department,
-        eventTime: sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId))?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
+        eventTime: primaryEv?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
         exposureQuantity: exposedQuantity,
         posQuantity: paidQuantity,
         reductionQuantity,
@@ -266,6 +273,8 @@ function buildOrderTimeline(
           ...accumulator.voidEvidenceIds,
           latestPaid.sourceCaptureId
         ],
+        primaryCaptureId: primaryEv?.sourceCaptureId ?? latestPaid.sourceCaptureId,
+        primaryFileName: primaryEv?.rawFileName ?? latestPaid.rawFileName,
         paymentMethod: latestPaid.metadata.paymentMethod,
         cashier: latestPaid.metadata.cashier,
         posUser: latestPaid.metadata.posUser
@@ -347,7 +356,9 @@ function buildSummaryExcessGaps(
         unitPrice,
         estimatedValue: excessQty * unitPrice,
         reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION',
-        sourceEvidenceIds: [verifyingSummary.sourceCaptureId]
+        sourceEvidenceIds: [verifyingSummary.sourceCaptureId],
+        primaryCaptureId: verifyingSummary.sourceCaptureId,
+        primaryFileName: verifyingSummary.rawFileName
       };
     });
 }
@@ -466,6 +477,7 @@ function buildItemComparisons(
     }
 
     const evidenceIds = Array.from(evidenceIdsMap.get(product) ?? []);
+    const primaryCaptureId = evidenceIds[0];
 
     result.push({
       productKey: product,
@@ -477,7 +489,8 @@ function buildItemComparisons(
       discrepancyQuantity,
       discrepancyRevenue,
       status,
-      evidenceIds
+      evidenceIds,
+      primaryCaptureId
     });
   }
 

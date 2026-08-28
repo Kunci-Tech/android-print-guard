@@ -99,6 +99,7 @@ export interface NormalizedEvidenceItemLine {
   sourceLine?: string;
   supportingLines?: string[];
   isModifier?: boolean;
+  lineIndex?: number;
 }
 
 // === Transaction Grouping & Item Parsing Types ===
@@ -196,6 +197,9 @@ export interface DailyItemComparison {
   discrepancyRevenue: number;
   status: 'MATCH' | 'MISSING_PRODUCTION' | 'EXCESS_PRODUCTION';
   evidenceIds?: string[];
+  primaryCaptureId?: string;
+  primaryFileName?: string;
+  lineIndex?: number;
 }
 
 export interface DailyPrintAudit {
@@ -250,6 +254,8 @@ export interface FulfillmentExposure {
   summaryQuantity: number;
   sourceEvidenceIds: string[];
   voidEvidenceIds: string[];
+  primaryCaptureId?: string;
+  primaryFileName?: string;
 }
 
 export interface AuditFinding {
@@ -266,6 +272,9 @@ export interface AuditFinding {
   reductionQuantity: number;
   estimatedValue: number;
   evidenceIds: string[];
+  primaryCaptureId?: string;
+  primaryFileName?: string;
+  lineIndex?: number;
   paymentMethod?: string;
   cashier?: string;
   posUser?: string;
@@ -283,6 +292,9 @@ export interface PrintCoverageGap {
   estimatedValue?: number;
   reason: 'MISSING_FINAL_PAID_BILL' | 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION';
   sourceEvidenceIds?: string[];
+  primaryCaptureId?: string;
+  primaryFileName?: string;
+  lineIndex?: number;
 }
 
 export interface AuditSummaryComparison {

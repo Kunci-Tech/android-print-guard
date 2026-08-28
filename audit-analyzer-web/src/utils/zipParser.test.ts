@@ -79,7 +79,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         normalizedProduct: 'Caesar Salad',
         quantity: 1,
         quantityRole: 'BASE',
-        sourceLine: 'x1 Caesar Salad'
+        sourceLine: 'x1 Caesar Salad',
+        lineIndex: 5
       }
     ]);
   });
@@ -127,7 +128,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         normalizedProduct: 'Latte',
         quantity: 2,
         quantityRole: 'BASE',
-        totalPrice: 70000
+        totalPrice: 70000,
+        lineIndex: 2
       }
     ]);
   });
@@ -177,7 +179,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         normalizedProduct: 'Espresso',
         quantity: 1,
         quantityRole: 'ADDITION',
-        sourceLine: '+1 Espresso'
+        sourceLine: '+1 Espresso',
+        lineIndex: 3
       }
     ]);
     expect(archive.normalizedEvidence[1]).toMatchObject({
@@ -198,7 +201,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantityRole: 'BASE',
         variant: undefined,
         unitPrice: 35000,
-        totalPrice: 35000
+        totalPrice: 35000,
+        lineIndex: 10
       }
     ]);
   });
@@ -223,7 +227,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantity: 1,
         quantityRole: 'BASE',
         sourceLine: 'x1 Kunci',
-        supportingLines: ['Bagel', 'Note: toasted']
+        supportingLines: ['Bagel', 'Note: toasted'],
+        lineIndex: 3
       }
     ]);
   });
@@ -249,7 +254,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantity: 1,
         quantityRole: 'BASE',
         sourceLine: 'x1 Nasi Goreng',
-        supportingLines: ['Spesial', note]
+        supportingLines: ['Spesial', note],
+        lineIndex: 3
       }
     ]);
   });
@@ -273,7 +279,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantity: 1,
         quantityRole: 'BASE',
         sourceLine: 'x1 Nasi Goreng',
-        supportingLines: ['no nuts']
+        supportingLines: ['no nuts'],
+        lineIndex: 3
       }
     ]);
   });
@@ -298,7 +305,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantity: 1,
         quantityRole: 'BASE',
         sourceLine: 'x1 Truffle Scrambled Egg Plate',
-        supportingLines: [continuation]
+        supportingLines: [continuation],
+        lineIndex: 3
       }
     ]);
   });
@@ -340,7 +348,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantityRole: 'BASE',
         variant: undefined,
         unitPrice: 0,
-        totalPrice: 0
+        totalPrice: 0,
+        lineIndex: 8
       }
     ]);
   });
@@ -365,7 +374,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         quantity: 1,
         quantityRole: 'BASE',
         sourceLine: 'x1 Kunci',
-        supportingLines: ['bagel', 'no nuts']
+        supportingLines: ['bagel', 'no nuts'],
+        lineIndex: 3
       }
     ]);
   });
@@ -595,6 +605,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         reductionQuantity: 1,
         estimatedValue: 0,
         evidenceIds: ['station-1', 'void-1', 'paid-1'],
+        primaryCaptureId: 'station-1',
+        primaryFileName: 'station-1.raw',
         paymentMethod: 'Cash',
         cashier: 'Komang',
         posUser: 'Wayan'
@@ -613,6 +625,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         reductionQuantity: 1,
         estimatedValue: 0,
         evidenceIds: ['station-2', 'summary-27-latest'],
+        primaryCaptureId: 'station-2',
+        primaryFileName: 'station-2.raw',
         paymentMethod: undefined,
         cashier: undefined,
         posUser: undefined
@@ -665,7 +679,9 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         unitPrice: 0,
         estimatedValue: 0,
         reason: 'MISSING_FINAL_PAID_BILL',
-        sourceEvidenceIds: ['ticket-28']
+        sourceEvidenceIds: ['ticket-28'],
+        primaryCaptureId: 'ticket-28',
+        primaryFileName: 'ticket-28.raw'
       }
     ]);
   });
@@ -720,7 +736,9 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
       exposureQuantity: 1,
       paidQuantity: 0,
       unitPrice: 35000,
-      estimatedValue: 35000
+      estimatedValue: 35000,
+      primaryCaptureId: 'bar-2',
+      primaryFileName: 'bar-2.raw'
     });
 
     const summaryExceedsGap = audit?.printCoverageGaps.find(g => g.reason === 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION');
@@ -729,7 +747,9 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
       exposureQuantity: 0,
       summaryQuantity: 1,
       unitPrice: 40000,
-      estimatedValue: 40000
+      estimatedValue: 40000,
+      primaryCaptureId: 'summary-1',
+      primaryFileName: 'summary-1.raw'
     });
 
     expect(audit?.itemComparisons).toEqual([
@@ -743,7 +763,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         discrepancyQuantity: -1,
         discrepancyRevenue: -35000,
         status: 'EXCESS_PRODUCTION',
-        evidenceIds: ['bar-1', 'bar-2', 'summary-1']
+        evidenceIds: ['bar-1', 'bar-2', 'summary-1'],
+        primaryCaptureId: 'bar-1'
       },
       {
         productKey: 'Matcha',
@@ -755,7 +776,8 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
         discrepancyQuantity: 1,
         discrepancyRevenue: 40000,
         status: 'MISSING_PRODUCTION',
-        evidenceIds: ['summary-1']
+        evidenceIds: ['summary-1'],
+        primaryCaptureId: 'summary-1'
       }
     ]);
   });
@@ -1006,7 +1028,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantity: 2,
         quantityRole: 'BASE',
         sourceLine: 'x2 Kunci Bagel',
-        supportingLines: ['Bagel Original', '[Extra toasted]', 'Note: cut in half']
+        supportingLines: ['Bagel Original', '[Extra toasted]', 'Note: cut in half'],
+        lineIndex: 4
       }
     ]);
     expect(order?.events[1].itemLines).toEqual([
@@ -1015,7 +1038,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantity: 2,
         quantityRole: 'BASE',
         sourceLine: 'x2 Kunci Bagel',
-        supportingLines: ['Bagel Original']
+        supportingLines: ['Bagel Original'],
+        lineIndex: 3
       }
     ]);
     expect(order?.events[2].itemLines).toEqual([
@@ -1024,7 +1048,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantity: 1,
         quantityRole: 'ADDITION',
         sourceLine: '+1 Kunci Bagel',
-        supportingLines: ['Bagel Original', 'Note: late add']
+        supportingLines: ['Bagel Original', 'Note: late add'],
+        lineIndex: 3
       }
     ]);
     expect(order?.events[3].itemLines).toEqual([
@@ -1033,7 +1058,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantity: 1,
         quantityRole: 'VOID',
         sourceLine: '-1 Kunci Bagel',
-        supportingLines: ['Bagel Original', 'VOID reason: wrong table']
+        supportingLines: ['Bagel Original', 'VOID reason: wrong table'],
+        lineIndex: 3
       }
     ]);
     expect(order?.events[4]).toMatchObject({
@@ -1055,7 +1081,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantityRole: 'BASE',
         variant: 'Bagel Original',
         unitPrice: 50000,
-        totalPrice: 150000
+        totalPrice: 150000,
+        lineIndex: 9
       },
       {
         normalizedProduct: 'Cream Cheese',
@@ -1064,7 +1091,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         variant: undefined,
         unitPrice: 10000,
         totalPrice: 10000,
-        isModifier: true
+        isModifier: true,
+        lineIndex: 12
       }
     ]);
     expect(order?.events[5]).toMatchObject({
@@ -1087,7 +1115,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantityRole: 'BASE',
         variant: 'Bagel Original',
         unitPrice: 50000,
-        totalPrice: 150000
+        totalPrice: 150000,
+        lineIndex: 10
       },
       {
         normalizedProduct: 'Cream Cheese',
@@ -1096,7 +1125,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         variant: undefined,
         unitPrice: 10000,
         totalPrice: 10000,
-        isModifier: true
+        isModifier: true,
+        lineIndex: 13
       }
     ]);
     expect(order?.events[6]).toMatchObject({
@@ -1112,7 +1142,27 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         paymentMethod: 'Qris Sinarmas'
       }
     });
-    expect(order?.events[6].itemLines).toEqual(order?.events[5].itemLines);
+    expect(order?.events[6].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 3,
+        quantityRole: 'BASE',
+        variant: 'Bagel Original',
+        unitPrice: 50000,
+        totalPrice: 150000,
+        lineIndex: 11
+      },
+      {
+        normalizedProduct: 'Cream Cheese',
+        quantity: 1,
+        quantityRole: 'BASE',
+        variant: undefined,
+        unitPrice: 10000,
+        totalPrice: 10000,
+        isModifier: true,
+        lineIndex: 14
+      }
+    ]);
 
     const complimentaryOrder = audit?.orderTimelines.find(item => item.posOrderNumber === 'POS-260827-211');
     expect(complimentaryOrder?.events).toHaveLength(1);
@@ -1136,7 +1186,8 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         quantityRole: 'BASE',
         variant: undefined,
         unitPrice: 0,
-        totalPrice: 0
+        totalPrice: 0,
+        lineIndex: 9
       }
     ]);
   });

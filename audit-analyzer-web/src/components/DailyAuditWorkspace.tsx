@@ -97,8 +97,19 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
   const handleOpenModalForOrderOrProduct = (
     posOrderNumber?: string,
     productName?: string,
-    evidenceIds?: string[]
+    evidenceIds?: string[],
+    primaryCaptureId?: string
   ) => {
+    if (primaryCaptureId) {
+      const primary = archive.synthesizedCaptures.find(c => c.id === primaryCaptureId);
+      if (primary) {
+        const related = (evidenceIds ?? []).map(id => archive.synthesizedCaptures.find(c => c.id === id)).filter((c): c is SynthesizedCapture => Boolean(c));
+        setModalTargetCapture(primary);
+        setModalRelatedCaptures(related.length > 0 ? related : [primary]);
+        return;
+      }
+    }
+
     if (evidenceIds && evidenceIds.length > 0) {
       const directCaptures = archive.synthesizedCaptures.filter(c => evidenceIds.includes(c.id));
       if (directCaptures.length > 0) {
@@ -486,7 +497,7 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                       <button
                         type="button"
                         className="audit-chip audit-chip-cyan"
-                        onClick={() => handleOpenModalForOrderOrProduct(undefined, item.normalizedProduct)}
+                        onClick={() => handleOpenModalForOrderOrProduct(undefined, item.normalizedProduct, item.evidenceIds, item.primaryCaptureId)}
                         style={{ cursor: 'pointer', fontSize: '0.72rem' }}
                         title="View raw ESC/POS evidence modal"
                       >
@@ -521,7 +532,7 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
               <article
                 key={finding.id}
                 className="glass-panel audit-finding"
-                onClick={() => handleOpenCaptureModal(finding.evidenceIds[0], finding.evidenceIds)}
+                onClick={() => handleOpenCaptureModal(finding.primaryCaptureId ?? finding.evidenceIds[0], finding.evidenceIds)}
                 style={{ cursor: 'pointer' }}
                 title="Click to view raw ESC/POS evidence modal"
               >
@@ -618,7 +629,7 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
               <div
                 key={gap.id}
                 className="glass-panel audit-gap-card"
-                onClick={() => handleOpenModalForOrderOrProduct(gap.posOrderNumber, gap.normalizedProduct, gap.sourceEvidenceIds)}
+                onClick={() => handleOpenModalForOrderOrProduct(gap.posOrderNumber, gap.normalizedProduct, gap.sourceEvidenceIds, gap.primaryCaptureId)}
                 style={{ cursor: 'pointer' }}
                 title="Click to view raw ESC/POS evidence modal"
               >
