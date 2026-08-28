@@ -97,6 +97,8 @@ export interface NormalizedEvidenceItemLine {
   unitPrice?: number;
   totalPrice?: number;
   sourceLine?: string;
+  supportingLines?: string[];
+  isModifier?: boolean;
 }
 
 // === Transaction Grouping & Item Parsing Types ===

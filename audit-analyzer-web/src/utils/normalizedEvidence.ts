@@ -5,21 +5,32 @@ import type {
   NormalizedEvidenceItemLine,
   SynthesizedCapture
 } from '../types/audit';
-import { parseDailySalesSummaryReport, parseOrderHeaderAndItems } from './receiptItemParser';
+import { isReceiptHeaderLine, parseDailySalesSummaryReport, parseOrderHeaderAndItems } from './receiptItemParser';
+
+const DEPARTMENT_HEADERS: Record<string, NormalizedDepartment> = {
+  BAR: 'BAR',
+  'HOT KITCHEN': 'HOT_KITCHEN',
+  'COLD KITCHEN': 'COLD_KITCHEN',
+  'CAPTAIN ORDER': 'CAPTAIN_ORDER'
+};
+
+function normalizeDepartmentHeader(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function isKnownDepartmentHeader(value: string): boolean {
+  return normalizeDepartmentHeader(value) in DEPARTMENT_HEADERS;
+}
+
+function startsWithKnownDepartmentHeader(value: string): boolean {
+  const normalized = normalizeDepartmentHeader(value);
+  return Object.keys(DEPARTMENT_HEADERS).some(header => normalized === header || normalized.startsWith(`${header} `));
+}
 
 function normalizeDepartment(department?: string): NormalizedDepartment {
-  switch (department) {
-    case 'BAR':
-      return 'BAR';
-    case 'HOT KITCHEN':
-      return 'HOT_KITCHEN';
-    case 'COLD KITCHEN':
-      return 'COLD_KITCHEN';
-    case 'CAPTAIN ORDER':
-      return 'CAPTAIN_ORDER';
-    default:
-      return 'UNKNOWN';
-  }
+  if (!department) return 'UNKNOWN';
+
+  return DEPARTMENT_HEADERS[normalizeDepartmentHeader(department)] ?? 'UNKNOWN';
 }
 
 function toOperationalDate(dateText: string): string | undefined {
@@ -51,12 +62,15 @@ function getOperationalDate(capture: SynthesizedCapture): string | undefined {
 }
 
 function classifyEventKind(capture: SynthesizedCapture, department: NormalizedDepartment): NormalizedEventKind {
-  const explicitLines = capture.parsedReceipt.lines.slice(0, 10).map(line => line.trim().toUpperCase());
+  const explicitLines = capture.parsedReceipt.lines.map(line => line.trim().toUpperCase());
 
   if (capture.category === 'DAILY_SUMMARY') {
     return 'DAILY_SALES_SUMMARY_SNAPSHOT';
   }
-  if (explicitLines.some(line => line === 'COMPLIMENTARY' || line === 'COMPLIMENT')) {
+  if (
+    explicitLines.some(line => line === 'COMPLIMENTARY' || line === 'COMPLIMENT')
+    || explicitLines.some(line => /^SALES TYPE\s*:\s*COMPLIMENTARY$/i.test(line))
+  ) {
     return 'COMPLIMENTARY_ACTIVITY';
   }
   if (capture.category === 'CUSTOMER_BILL') {
@@ -66,7 +80,8 @@ function classifyEventKind(capture: SynthesizedCapture, department: NormalizedDe
     if (explicitLines.some(line => line === 'REPRINT' || line === 'CETAK ULANG')) {
       return 'BILL_REPRINT';
     }
-    return 'FINAL_PAID_BILL';
+    const hasPaymentEvidence = explicitLines.some(isPaymentEvidenceLine);
+    return hasPaymentEvidence ? 'FINAL_PAID_BILL' : 'NON_AUDIT_EVIDENCE';
   }
   if (department === 'CAPTAIN_ORDER') {
     return 'CAPTAIN_ORDER';
@@ -84,11 +99,26 @@ function classifyEventKind(capture: SynthesizedCapture, department: NormalizedDe
   return 'NON_AUDIT_EVIDENCE';
 }
 
+function isPaymentEvidenceLine(line: string): boolean {
+  if (line === 'TENDER') return true;
+
+  const labeledMethod = getLabeledPaymentMethod(line);
+  if (labeledMethod) {
+    return !/^(NO|PENDING|UNPAID|0)$/i.test(labeledMethod);
+  }
+
+  return /^(CASH|QRIS|CARD|CREDIT CARD|DEBIT CARD|EDC|TRANSFER|GOPAY|OVO|DANA)$/.test(line);
+}
+
+function getLabeledPaymentMethod(line: string): string | undefined {
+  return line.match(/^(?:PAYMENT|PAYMENT METHOD|PAID)\s*:\s*(.+)$/i)?.[1]?.trim();
+}
+
 function normalizeProductName(value: string): string {
   return value
-    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/^\+\s*/, '')
+    .replace(/[()/]/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/\s+\/\s*$/, '')
     .trim();
 }
 
@@ -102,7 +132,8 @@ function buildBillItemLines(capture: SynthesizedCapture): NormalizedEvidenceItem
     quantityRole: 'BASE',
     variant: item.variant || undefined,
     unitPrice: item.unitPrice,
-    totalPrice: item.totalPrice
+    totalPrice: item.totalPrice,
+    ...(item.isModifier ? { isModifier: true } : {})
   }));
 }
 
@@ -117,27 +148,79 @@ function buildSummaryItemLines(capture: SynthesizedCapture): NormalizedEvidenceI
   }));
 }
 
+function isTicketHeaderLine(line: string): boolean {
+  return isReceiptHeaderLine(line)
+    || isKnownDepartmentHeader(line);
+}
+
+function isSupportOnlyLine(line: string): boolean {
+  const trimmed = line.trim();
+  return /^\[.+\]$/.test(trimmed)
+    || /^[A-Za-z][A-Za-z ]+\s*:/i.test(trimmed)
+    || /^(no|without|allergy|please|less|more|extra)\b/i.test(trimmed)
+    || /^void\b/i.test(trimmed);
+}
+
+function isLikelyTicketContinuationLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (startsWithKnownDepartmentHeader(trimmed)) return false;
+  return !isTicketHeaderLine(trimmed);
+}
+
+function getTicketProductContinuationLines(supportingLines: string[]): string[] {
+  return supportingLines.filter(line => !isSupportOnlyLine(line));
+}
+
+function toTicketItemLine(
+  match: RegExpMatchArray,
+  supportingLines: string[]
+): NormalizedEvidenceItemLine {
+  const quantityPrefix = match[1];
+  const quantityRole = quantityPrefix === '+'
+    ? 'ADDITION'
+    : quantityPrefix === '-'
+      ? 'VOID'
+      : 'BASE';
+  const baseProductText = match[3];
+  const productContinuationLines = getTicketProductContinuationLines(supportingLines);
+  const baseProduct = normalizeProductName([baseProductText, ...productContinuationLines].join(' '));
+
+  return {
+    normalizedProduct: baseProduct,
+    quantity: parseInt(match[2], 10),
+    quantityRole,
+    sourceLine: match[0],
+    supportingLines: supportingLines.length > 0 ? supportingLines : undefined
+  };
+}
+
 function buildTicketItemLines(capture: SynthesizedCapture): NormalizedEvidenceItemLine[] {
   const itemLines: NormalizedEvidenceItemLine[] = [];
+  let pendingMatch: RegExpMatchArray | undefined;
+  let supportingLines: string[] = [];
+
+  const flushPending = () => {
+    if (!pendingMatch) return;
+    itemLines.push(toTicketItemLine(pendingMatch, supportingLines));
+    pendingMatch = undefined;
+    supportingLines = [];
+  };
 
   for (const line of capture.parsedReceipt.lines) {
     const match = line.match(/^([x+-])([0-9]+)\s+(.+)$/i);
-    if (!match) continue;
-
-    const quantityPrefix = match[1];
-    const quantityRole = quantityPrefix === '+'
-      ? 'ADDITION'
-      : quantityPrefix === '-'
-        ? 'VOID'
-        : 'BASE';
-
-    itemLines.push({
-      normalizedProduct: normalizeProductName(match[3]),
-      quantity: parseInt(match[2], 10),
-      quantityRole,
-      sourceLine: line
-    });
+    if (match) {
+      flushPending();
+      pendingMatch = match;
+    } else if (
+      pendingMatch
+      && !isTicketHeaderLine(line)
+      && isLikelyTicketContinuationLine(line)
+    ) {
+      supportingLines.push(line.trim());
+    }
   }
+
+  flushPending();
 
   return itemLines;
 }
@@ -162,6 +245,13 @@ function getPaymentMethod(capture: SynthesizedCapture, parsedPaymentMethod?: str
   const tenderIndex = capture.parsedReceipt.lines.findIndex(line => /^Tender$/i.test(line.trim()));
   if (tenderIndex >= 0) {
     return capture.parsedReceipt.lines[tenderIndex + 1]?.trim() || undefined;
+  }
+
+  for (const line of capture.parsedReceipt.lines) {
+    const trimmed = line.trim();
+    const labeledMethod = getLabeledPaymentMethod(trimmed);
+    if (labeledMethod && isPaymentEvidenceLine(trimmed.toUpperCase())) return labeledMethod;
+    if (isPaymentEvidenceLine(trimmed.toUpperCase())) return trimmed;
   }
 
   return undefined;

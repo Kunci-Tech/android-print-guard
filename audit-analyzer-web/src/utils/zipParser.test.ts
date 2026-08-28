@@ -155,6 +155,8 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         'Sales Type: Normal',
         'User: Made',
         'Cashier: Made',
+        'Tender',
+        'Qris Sinarmas',
         'Espresso',
         '1x 35.000',
         'Total Item 1',
@@ -199,6 +201,270 @@ describe('parseAuditZipArchive normalized evidence ingestion', () => {
         totalPrice: 35000
       }
     ]);
+  });
+
+  it('joins plain wrapped ticket product names without forcing them into variants', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('wrapped-1', '2026-08-27T09:15:00.000Z', 'wrapped-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-89',
+        'Date: 27/08/2026 17:15',
+        'x1 Kunci',
+        'Bagel',
+        'Note: toasted'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'wrapped-ticket.zip');
+
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel',
+        quantity: 1,
+        quantityRole: 'BASE',
+        sourceLine: 'x1 Kunci',
+        supportingLines: ['Bagel', 'Note: toasted']
+      }
+    ]);
+  });
+
+  it('retains long and colon-delimited ticket notes with their parent product', async () => {
+    const note = 'Allergy: no nuts, no sesame, and keep sauce packed separately for delivery';
+    const zipBuffer = await buildZip([
+      makeCapture('note-1', '2026-08-27T09:20:00.000Z', 'note-1.raw', [
+        'HOT KITCHEN',
+        'Order Number: POS-260827-90',
+        'Date: 27/08/2026 17:20',
+        'x1 Nasi Goreng',
+        'Spesial',
+        note
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'ticket-notes.zip');
+
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Nasi Goreng Spesial',
+        quantity: 1,
+        quantityRole: 'BASE',
+        sourceLine: 'x1 Nasi Goreng',
+        supportingLines: ['Spesial', note]
+      }
+    ]);
+  });
+
+  it('retains unlabeled lower-case ticket notes without adding them to the normalized product', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('plain-note-1', '2026-08-27T09:21:00.000Z', 'plain-note-1.raw', [
+        'HOT KITCHEN',
+        'Order Number: POS-260827-93',
+        'Date: 27/08/2026 17:21',
+        'x1 Nasi Goreng',
+        'no nuts'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'plain-note.zip');
+
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Nasi Goreng',
+        quantity: 1,
+        quantityRole: 'BASE',
+        sourceLine: 'x1 Nasi Goreng',
+        supportingLines: ['no nuts']
+      }
+    ]);
+  });
+
+  it('keeps long wrapped ticket product continuations in the normalized product', async () => {
+    const continuation = 'With roasted garlic mushroom ragout and crispy shallot garnish';
+    const zipBuffer = await buildZip([
+      makeCapture('long-product-1', '2026-08-27T09:22:00.000Z', 'long-product-1.raw', [
+        'HOT KITCHEN',
+        'Order Number: POS-260827-92',
+        'Date: 27/08/2026 17:22',
+        'x1 Truffle Scrambled Egg Plate',
+        continuation
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'long-product.zip');
+
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: `Truffle Scrambled Egg Plate ${continuation}`,
+        quantity: 1,
+        quantityRole: 'BASE',
+        sourceLine: 'x1 Truffle Scrambled Egg Plate',
+        supportingLines: [continuation]
+      }
+    ]);
+  });
+
+  it('classifies sales-type-only complimentary bills as complimentary activity', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('comp-sales-type-1', '2026-08-27T09:25:00.000Z', 'comp-sales-type-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-91',
+        'Date: 27/08/2026 17:25',
+        'Table: Table - 10',
+        'Customer: Staff Meal',
+        'Sales Type: Complimentary',
+        'User: Wayan',
+        'Cashier: Kadek',
+        'Garden Salad',
+        '1x 0',
+        'Total Item 1',
+        'Total 0'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'complimentary-sales-type.zip');
+
+    expect(archive.normalizedEvidence[0]).toMatchObject({
+      category: 'CUSTOMER_BILL',
+      eventKind: 'COMPLIMENTARY_ACTIVITY',
+      posOrderNumber: 'POS-260827-91',
+      metadata: {
+        salesType: 'Complimentary',
+        posUser: 'Wayan',
+        cashier: 'Kadek'
+      }
+    });
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Garden Salad',
+        quantity: 1,
+        quantityRole: 'BASE',
+        variant: undefined,
+        unitPrice: 0,
+        totalPrice: 0
+      }
+    ]);
+  });
+
+  it('keeps lowercase wrapped product continuations while retaining note-like lines as support', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('lowercase-product-1', '2026-08-27T09:26:00.000Z', 'lowercase-product-1.raw', [
+        'HOT KITCHEN',
+        'Order Number: POS-260827-94',
+        'Date: 27/08/2026 17:26',
+        'x1 Kunci',
+        'bagel',
+        'no nuts'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'lowercase-product.zip');
+
+    expect(archive.normalizedEvidence[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci bagel',
+        quantity: 1,
+        quantityRole: 'BASE',
+        sourceLine: 'x1 Kunci',
+        supportingLines: ['bagel', 'no nuts']
+      }
+    ]);
+  });
+
+  it('does not classify a bill without payment evidence as paid', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('unpaid-1', '2026-08-27T09:27:00.000Z', 'unpaid-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-95',
+        'Date: 27/08/2026 17:27',
+        'Sales Type: Normal',
+        'Kunci Bagel',
+        '1x 50.000',
+        'Total 50.000'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'unpaid-bill.zip');
+
+    expect(archive.normalizedEvidence[0].eventKind).toBe('NON_AUDIT_EVIDENCE');
+  });
+
+  it('recognizes event markers after the receipt header', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('late-marker-1', '2026-08-27T09:28:00.000Z', 'late-marker-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-96',
+        'Date: 27/08/2026 17:28',
+        'Table: Table - 1',
+        'Customer: Raka',
+        'Sales Type: Normal',
+        'User: Made',
+        'Cashier: Komang',
+        'Kunci Bagel',
+        '1x 50.000',
+        'INI BUKAN BUKTI PEMBAYARAN',
+        'Total 50.000'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'late-marker.zip');
+
+    expect(archive.normalizedEvidence[0].eventKind).toBe('PRELIMINARY_BILL');
+  });
+
+  it('recognizes direct payment labels and late department headers', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('direct-cash-1', '2026-08-27T09:29:00.000Z', 'direct-cash-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-97',
+        'Date: 27/08/2026 17:29',
+        'Sales Type: Normal',
+        'Kunci Bagel',
+        '1x 50.000',
+        'Total 50.000',
+        'Cash'
+      ].join('\n')),
+      makeCapture('late-department-1', '2026-08-27T09:30:00.000Z', 'late-department-1.raw', [
+        'Printer Header',
+        'Order Number: POS-260827-98',
+        'Date: 27/08/2026 17:30',
+        'Header Detail',
+        'Station Detail',
+        'Shift Detail',
+        'Ticket Detail',
+        'Operator Detail',
+        'BAR',
+        'x1 Espresso'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'late-parser-markers.zip');
+
+    expect(archive.normalizedEvidence[0]).toMatchObject({
+      eventKind: 'FINAL_PAID_BILL',
+      metadata: { paymentMethod: 'Cash' }
+    });
+    expect(archive.normalizedEvidence[1]).toMatchObject({
+      eventKind: 'PRODUCTION_TICKET',
+      normalizedDepartment: 'BAR'
+    });
+  });
+
+  it('does not treat pending payment labels as completed payment', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('pending-payment-1', '2026-08-27T09:31:00.000Z', 'pending-payment-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-99',
+        'Date: 27/08/2026 17:31',
+        'Kunci Bagel',
+        '1x 50.000',
+        'Payment: Pending',
+        'Total 50.000'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'pending-payment.zip');
+
+    expect(archive.normalizedEvidence[0].eventKind).toBe('NON_AUDIT_EVIDENCE');
   });
 });
 
@@ -489,5 +755,294 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
     expect(secondAudit?.verifyingSummary?.sourceCaptureId).toBe('summary-b');
     expect(firstAudit?.summaryComparison.summaryQuantity).toBe(2);
     expect(secondAudit?.summaryComparison.summaryQuantity).toBe(2);
+  });
+});
+
+describe('parseAuditZipArchive order evidence timelines', () => {
+  it('reconstructs chronological timelines with wrapped products, support lines, and bill states', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('summary-27', '2026-08-27T10:30:00.000Z', 'summary-27.raw', makeDailySummary('27/08/2026', [
+        'x3 Kunci Bagel / Bagel Original / 150.000',
+        'x1 Cream Cheese / 10.000'
+      ])),
+      makeCapture('final-1', '2026-08-27T10:00:00.000Z', 'final-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:30',
+        'Table: Table - 9',
+        'Customer: Raka',
+        'Sales Type: Normal',
+        'User: Made',
+        'Cashier: Komang',
+        'Tender',
+        'Qris Sinarmas',
+        'Kunci Bagel',
+        'Bagel Original',
+        '3x 50.000 150.000',
+        '+ Cream Cheese',
+        '1x 10.000',
+        'Total Item 4',
+        'Total 160.000'
+      ].join('\n')),
+      makeCapture('base-1', '2026-08-27T09:00:00.000Z', 'base-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:00',
+        'User: Sari',
+        'x2 Kunci Bagel',
+        'Bagel Original',
+        '[Extra toasted]',
+        'Note: cut in half'
+      ].join('\n')),
+      makeCapture('captain-1', '2026-08-27T09:05:00.000Z', 'captain-1.raw', [
+        'CAPTAIN ORDER',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:05',
+        'x2 Kunci Bagel',
+        'Bagel Original'
+      ].join('\n')),
+      makeCapture('prelim-1', '2026-08-27T09:20:00.000Z', 'prelim-1.raw', [
+        'KUNCI KUPPI',
+        'INI BUKAN BUKTI PEMBAYARAN',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:20',
+        'Table: Table - 9',
+        'Customer: Raka',
+        'Sales Type: Normal',
+        'User: Made',
+        'Cashier: Komang',
+        'Kunci Bagel',
+        'Bagel Original',
+        '3x 50.000 150.000',
+        '+ Cream Cheese',
+        '1x 10.000',
+        'Total Item 4',
+        'Total 160.000'
+      ].join('\n')),
+      makeCapture('add-1', '2026-08-27T09:10:00.000Z', 'add-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:10',
+        '+1 Kunci Bagel',
+        'Bagel Original',
+        'Note: late add'
+      ].join('\n')),
+      makeCapture('void-1', '2026-08-27T09:15:00.000Z', 'void-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:15',
+        '-1 Kunci Bagel',
+        'Bagel Original',
+        'VOID reason: wrong table'
+      ].join('\n')),
+      makeCapture('reprint-1', '2026-08-27T10:05:00.000Z', 'reprint-1.raw', [
+        'KUNCI KUPPI',
+        'REPRINT',
+        'Order Number: POS-260827-210',
+        'Date: 27/08/2026 17:35',
+        'Table: Table - 9',
+        'Customer: Raka',
+        'Sales Type: Normal',
+        'User: Made',
+        'Cashier: Komang',
+        'Tender',
+        'Qris Sinarmas',
+        'Kunci Bagel',
+        'Bagel Original',
+        '3x 50.000 150.000',
+        '+ Cream Cheese',
+        '1x 10.000',
+        'Total Item 4',
+        'Total 160.000'
+      ].join('\n')),
+      makeCapture('comp-1', '2026-08-27T09:25:00.000Z', 'comp-1.raw', [
+        'KUNCI KUPPI',
+        'COMPLIMENTARY',
+        'Order Number: POS-260827-211',
+        'Date: 27/08/2026 17:25',
+        'Table: Table - 10',
+        'Customer: Staff Meal',
+        'Sales Type: Complimentary',
+        'User: Wayan',
+        'Cashier: Kadek',
+        'Garden Salad',
+        '1x 0',
+        'Total Item 1',
+        'Total 0'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'timeline.zip');
+    const audit = archive.auditModel.dailyAudits.find(item => item.operationalDate === '2026-08-27');
+    const order = audit?.orderTimelines.find(item => item.posOrderNumber === 'POS-260827-210');
+
+    expect(order?.events.map(event => event.sourceCaptureId)).toEqual([
+      'base-1',
+      'captain-1',
+      'add-1',
+      'void-1',
+      'prelim-1',
+      'final-1',
+      'reprint-1'
+    ]);
+    expect(order?.events.map(event => event.eventKind)).toEqual([
+      'PRODUCTION_TICKET',
+      'CAPTAIN_ORDER',
+      'ADD_ITEM',
+      'VOID_ITEM',
+      'PRELIMINARY_BILL',
+      'FINAL_PAID_BILL',
+      'BILL_REPRINT'
+    ]);
+    expect(order?.events[0]).toMatchObject({
+      normalizedDepartment: 'BAR',
+      metadata: {
+        sourceAddress: '10.0.0.12',
+        printerIp: '10.0.0.42'
+      },
+      rawEvidence: {
+        captureId: 'base-1',
+        rawFileName: 'base-1.raw'
+      }
+    });
+    expect(order?.events[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 2,
+        quantityRole: 'BASE',
+        sourceLine: 'x2 Kunci Bagel',
+        supportingLines: ['Bagel Original', '[Extra toasted]', 'Note: cut in half']
+      }
+    ]);
+    expect(order?.events[1].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 2,
+        quantityRole: 'BASE',
+        sourceLine: 'x2 Kunci Bagel',
+        supportingLines: ['Bagel Original']
+      }
+    ]);
+    expect(order?.events[2].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 1,
+        quantityRole: 'ADDITION',
+        sourceLine: '+1 Kunci Bagel',
+        supportingLines: ['Bagel Original', 'Note: late add']
+      }
+    ]);
+    expect(order?.events[3].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 1,
+        quantityRole: 'VOID',
+        sourceLine: '-1 Kunci Bagel',
+        supportingLines: ['Bagel Original', 'VOID reason: wrong table']
+      }
+    ]);
+    expect(order?.events[4]).toMatchObject({
+      rawEvidence: {
+        captureId: 'prelim-1',
+        rawFileName: 'prelim-1.raw'
+      },
+      metadata: {
+        customer: 'Raka',
+        salesType: 'Normal',
+        posUser: 'Made',
+        cashier: 'Komang'
+      }
+    });
+    expect(order?.events[4].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 3,
+        quantityRole: 'BASE',
+        variant: 'Bagel Original',
+        unitPrice: 50000,
+        totalPrice: 150000
+      },
+      {
+        normalizedProduct: 'Cream Cheese',
+        quantity: 1,
+        quantityRole: 'BASE',
+        variant: undefined,
+        unitPrice: 10000,
+        totalPrice: 10000,
+        isModifier: true
+      }
+    ]);
+    expect(order?.events[5]).toMatchObject({
+      rawEvidence: {
+        captureId: 'final-1',
+        rawFileName: 'final-1.raw'
+      },
+      metadata: {
+        customer: 'Raka',
+        salesType: 'Normal',
+        posUser: 'Made',
+        cashier: 'Komang',
+        paymentMethod: 'Qris Sinarmas'
+      }
+    });
+    expect(order?.events[5].itemLines).toEqual([
+      {
+        normalizedProduct: 'Kunci Bagel Bagel Original',
+        quantity: 3,
+        quantityRole: 'BASE',
+        variant: 'Bagel Original',
+        unitPrice: 50000,
+        totalPrice: 150000
+      },
+      {
+        normalizedProduct: 'Cream Cheese',
+        quantity: 1,
+        quantityRole: 'BASE',
+        variant: undefined,
+        unitPrice: 10000,
+        totalPrice: 10000,
+        isModifier: true
+      }
+    ]);
+    expect(order?.events[6]).toMatchObject({
+      rawEvidence: {
+        captureId: 'reprint-1',
+        rawFileName: 'reprint-1.raw'
+      },
+      metadata: {
+        customer: 'Raka',
+        salesType: 'Normal',
+        posUser: 'Made',
+        cashier: 'Komang',
+        paymentMethod: 'Qris Sinarmas'
+      }
+    });
+    expect(order?.events[6].itemLines).toEqual(order?.events[5].itemLines);
+
+    const complimentaryOrder = audit?.orderTimelines.find(item => item.posOrderNumber === 'POS-260827-211');
+    expect(complimentaryOrder?.events).toHaveLength(1);
+    expect(complimentaryOrder?.events[0]).toMatchObject({
+      eventKind: 'COMPLIMENTARY_ACTIVITY',
+      metadata: {
+        customer: 'Staff Meal',
+        salesType: 'Complimentary',
+        posUser: 'Wayan',
+        cashier: 'Kadek'
+      }
+    });
+    expect(complimentaryOrder?.events[0].rawEvidence).toMatchObject({
+      captureId: 'comp-1',
+      rawFileName: 'comp-1.raw'
+    });
+    expect(complimentaryOrder?.events[0].itemLines).toEqual([
+      {
+        normalizedProduct: 'Garden Salad',
+        quantity: 1,
+        quantityRole: 'BASE',
+        variant: undefined,
+        unitPrice: 0,
+        totalPrice: 0
+      }
+    ]);
   });
 });

@@ -63,7 +63,7 @@ export function parseESCPOSBytes(rawBytes: Uint8Array): ESCPOSParsedReceipt {
 }
 
 function detectExplicitDepartment(lines: string[]): string | undefined {
-  for (const line of lines.slice(0, 8)) {
+  for (const line of lines) {
     const normalized = line.trim().replace(/\s+/g, ' ').toUpperCase();
 
     if (normalized === 'BAR') {

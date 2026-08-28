@@ -8,6 +8,18 @@ import type {
   ItemDiscrepancy
 } from '../types/audit';
 
+const RECEIPT_HEADER_KEYWORDS = [
+  'date', 'order number', 'table', 'customer', 'sales type', 'user', 'cashier',
+  'phone:', 'kunci kuppi', '================', '----------------', 'bukti pembayaran',
+  'ini bukan bukti pembayaran', 'total item', 'total', 'tender', 'cash', 'change', 'email:', 'password', 'j@vb@',
+  'ringkasan', 'akhir shift', 'penjualan', 'reprint', 'cetak ulang', 'complimentary', 'compliment'
+];
+
+export function isReceiptHeaderLine(line: string): boolean {
+  const lineLower = line.toLowerCase();
+  return RECEIPT_HEADER_KEYWORDS.some(keyword => lineLower.startsWith(keyword) || lineLower === keyword);
+}
+
 export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader | null {
   if (!asciiText || asciiText.trim().length === 0) return null;
 
@@ -34,7 +46,7 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
     const orderMatch = line.match(/Order\s*Number\s*:\s*([A-Za-z0-9-]+)/i);
     if (orderMatch) orderNumber = orderMatch[1];
 
-    const dateMatch = line.match(/Date\s*:\s*([0-9\/: ]+)/i);
+    const dateMatch = line.match(/Date\s*:\s*([0-9/: ]+)/i);
     if (dateMatch) date = dateMatch[1];
 
     const tableMatch = line.match(/Table\s*:\s*(.+)/i);
@@ -55,9 +67,9 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
     const tenderMatch = line.match(/^Tender\s*\n?\s*([A-Za-z0-9 ]+)/i);
     if (tenderMatch && !paymentMethod) paymentMethod = tenderMatch[1];
 
-    const totalMatch = line.match(/^Total\s+([0-9\.\,]+)$/i);
+    const totalMatch = line.match(/^Total\s+([0-9.,]+)$/i);
     if (totalMatch) {
-      const parsedVal = parseInt(totalMatch[1].replace(/[\.\,]/g, ''), 10);
+      const parsedVal = parseInt(totalMatch[1].replace(/[.,]/g, ''), 10);
       if (!isNaN(parsedVal)) totalAmount = parsedVal;
     }
 
@@ -68,13 +80,6 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
   }
 
   const items: ParsedOrderItem[] = [];
-  const headerKeywords = [
-    'date', 'order number', 'table', 'customer', 'sales type', 'user', 'cashier',
-    'phone:', 'kunci kuppi', '================', '----------------', 'bukti pembayaran',
-    'total item', 'total', 'tender', 'cash', 'change', 'email:', 'password', 'j@vb@',
-    'ringkasan', 'akhir shift', 'penjualan'
-  ];
-
   const variantKeywords = [
     '/', 'iced', 'ice', 'hot', 'freshmilk', 'oatmilk', 'large', 'slice', 'takeaway',
     'sauce', 'bagase', 'sourdough', 'shokupan', 'flat-bread', 'chili', 'egg', 'cheese',
@@ -85,9 +90,8 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineLower = line.toLowerCase();
 
-    const qtyMatch = line.match(/^([0-9]+)x\s*([0-9\.\,]+)?(?:\s+([0-9\.\,]+))?$/i) || line.match(/^([0-9]+)x$/i);
+    const qtyMatch = line.match(/^([0-9]+)x\s*([0-9.,]+)?(?:\s+([0-9.,]+))?$/i) || line.match(/^([0-9]+)x$/i);
     const altQtyMatch = line.match(/^x([0-9]+)\s+(.+)$/i);
 
     if (qtyMatch) {
@@ -96,10 +100,10 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
       let total = 0;
 
       if (qtyMatch[3]) {
-        price = parseInt(qtyMatch[2].replace(/[\.\,]/g, ''), 10);
-        total = parseInt(qtyMatch[3].replace(/[\.\,]/g, ''), 10);
+        price = parseInt(qtyMatch[2].replace(/[.,]/g, ''), 10);
+        total = parseInt(qtyMatch[3].replace(/[.,]/g, ''), 10);
       } else if (qtyMatch[2]) {
-        total = parseInt(qtyMatch[2].replace(/[\.\,]/g, ''), 10);
+        total = parseInt(qtyMatch[2].replace(/[.,]/g, ''), 10);
         price = total / (qty || 1);
       }
 
@@ -153,8 +157,11 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
       });
       pendingLines = [];
     } else {
-      const isHeader = headerKeywords.some(kw => lineLower.startsWith(kw) || lineLower === kw);
-      if (!isHeader && line.length > 1) {
+      if (i > 0 && /^Tender$/i.test(lines[i - 1])) {
+        continue;
+      }
+
+      if (!isReceiptHeaderLine(line) && line.length > 1) {
         pendingLines.push(line);
       }
     }
@@ -204,12 +211,12 @@ export function parseDailySalesSummaryReport(asciiText: string): {
       const qty = parseInt(itemMatch[1], 10);
       let rest = itemMatch[2].trim();
 
-      const priceMatch = rest.match(/([0-9\.\,]+)$/);
+      const priceMatch = rest.match(/([0-9.,]+)$/);
       let price = 0;
       let rawName = rest;
 
       if (priceMatch) {
-        price = parseInt(priceMatch[1].replace(/[\.\,]/g, ''), 10);
+        price = parseInt(priceMatch[1].replace(/[.,]/g, ''), 10);
         rawName = rest.substring(0, priceMatch.index).trim();
       }
 
