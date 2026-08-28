@@ -39,3 +39,17 @@ re-read whole files.
 After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues for Kunci-Tech/android-print-guard. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The canonical five-role triage vocabulary is used without renaming. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
