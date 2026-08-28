@@ -6,13 +6,15 @@ import {
   ChevronDown,
   Clock,
   Download,
+  Eye,
   FileSearch,
   ReceiptText,
   Search,
   ShieldAlert,
   TrendingDown
 } from 'lucide-react';
-import type { DailyPrintAudit, ParsedAuditArchive } from '../types/audit';
+import type { DailyPrintAudit, ParsedAuditArchive, SynthesizedCapture } from '../types/audit';
+import { RawEvidenceModal } from './RawEvidenceModal';
 
 interface DailyAuditWorkspaceProps {
   archive: ParsedAuditArchive;
@@ -72,6 +74,38 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
   const [gapFilterTab, setGapFilterTab] = React.useState<'ALL' | 'MISSING_PAID' | 'SUMMARY_EXCEEDS'>('ALL');
   const [itemSearchTerm, setItemSearchTerm] = React.useState('');
   const [itemFilterTab, setItemFilterTab] = React.useState<'ALL' | 'DISCREPANCIES' | 'MATCHES'>('ALL');
+
+  const [modalTargetCapture, setModalTargetCapture] = React.useState<SynthesizedCapture | null>(null);
+  const [modalRelatedCaptures, setModalRelatedCaptures] = React.useState<SynthesizedCapture[]>([]);
+
+  const handleOpenCaptureModal = (captureId?: string, relatedCaptureIds?: string[]) => {
+    if (!captureId && (!relatedCaptureIds || relatedCaptureIds.length === 0)) return;
+
+    const findCapture = (id: string) => archive.synthesizedCaptures.find(c => c.id === id);
+
+    const primary = captureId ? findCapture(captureId) : undefined;
+    const related = (relatedCaptureIds ?? [])
+      .map(id => findCapture(id))
+      .filter((c): c is SynthesizedCapture => Boolean(c));
+
+    if (primary || related.length > 0) {
+      setModalTargetCapture(primary || related[0]);
+      setModalRelatedCaptures(related);
+    }
+  };
+
+  const handleOpenModalForOrderOrProduct = (posOrderNumber?: string, productName?: string) => {
+    const matchingCaptures = archive.synthesizedCaptures.filter(c => {
+      const matchOrder = posOrderNumber ? c.parsedReceipt.orderNumber === posOrderNumber : false;
+      const matchProduct = productName ? c.parsedReceipt.asciiText.toLowerCase().includes(productName.toLowerCase()) : false;
+      return matchOrder || matchProduct;
+    });
+
+    if (matchingCaptures.length > 0) {
+      setModalTargetCapture(matchingCaptures[0]);
+      setModalRelatedCaptures(matchingCaptures);
+    }
+  };
 
   const audit = archive.auditModel.dailyAudits.find(item => item.operationalDate === selectedDate)
     ?? archive.auditModel.dailyAudits[0];
@@ -368,12 +402,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                 <th style={{ textAlign: 'center' }}>Discrepancy Qty</th>
                 <th style={{ textAlign: 'right' }}>Est. Gap Value</th>
                 <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredItemComparisons.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                     No products match the selected criteria for operational date {audit.operationalDate}.
                   </td>
                 </tr>
@@ -408,6 +443,17 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                         {item.status === 'MATCH' ? 'Match' : item.status === 'MISSING_PRODUCTION' ? 'Missing Production' : 'Excess Production'}
                       </span>
                     </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        className="audit-chip audit-chip-cyan"
+                        onClick={() => handleOpenModalForOrderOrProduct(undefined, item.normalizedProduct)}
+                        style={{ cursor: 'pointer', fontSize: '0.72rem' }}
+                        title="View raw ESC/POS evidence modal"
+                      >
+                        <Eye size={12} style={{ marginRight: '4px' }} /> Raw Data
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -433,9 +479,20 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
         ) : (
           <div className="audit-finding-list">
             {audit.findings.map(finding => (
-              <article key={finding.id} className="glass-panel audit-finding">
+              <article
+                key={finding.id}
+                className="glass-panel audit-finding"
+                onClick={() => handleOpenCaptureModal(finding.evidenceIds[0], finding.evidenceIds)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view raw ESC/POS evidence modal"
+              >
                 <div>
-                  <span className="badge badge-rose"><TrendingDown size={13} /> Reduction</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="badge badge-rose"><TrendingDown size={13} /> Reduction</span>
+                    <span className="audit-chip audit-chip-cyan" style={{ fontSize: '0.72rem' }}>
+                      <Eye size={12} style={{ marginRight: '4px' }} /> View Raw Evidence
+                    </span>
+                  </div>
                   <h4>{finding.normalizedProduct}</h4>
                   <p>{finding.posOrderNumber} · {finding.department.replace(/_/g, ' ')}</p>
                 </div>
@@ -519,7 +576,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
         ) : (
           <div className="audit-gap-cards-grid">
             {displayedGaps.map(gap => (
-              <div key={gap.id} className="glass-panel audit-gap-card">
+              <div
+                key={gap.id}
+                className="glass-panel audit-gap-card"
+                onClick={() => handleOpenModalForOrderOrProduct(gap.posOrderNumber, gap.normalizedProduct)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view raw ESC/POS evidence modal"
+              >
                 <div className="audit-gap-card-header">
                   <div>
                     <span className="audit-order-badge">{gap.posOrderNumber || 'Summary Scope'}</span>
@@ -546,7 +609,9 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                   </div>
                   <div className="audit-gap-card-footer">
                     <span>Est. Unit Price: {formatCurrency(gap.unitPrice ?? 0)}</span>
-                    <strong>Est. Impact: {formatCurrency(gap.estimatedValue ?? 0)}</strong>
+                    <strong style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Eye size={12} color="#38bdf8" /> Impact: {formatCurrency(gap.estimatedValue ?? 0)}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -571,7 +636,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                 <span>No void production evidence before the verifying summary.</span>
               </div>
             ) : audit.voidEvidence.map(event => (
-              <div key={event.id} className="glass-panel audit-gap">
+              <div
+                key={event.id}
+                className="glass-panel audit-gap"
+                onClick={() => handleOpenCaptureModal(event.sourceCaptureId)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view raw evidence modal"
+              >
                 <strong>{event.posOrderNumber || 'Untracked order'}</strong>
                 <span>{formatDateTime(event.capturedAt)} · {event.rawFileName}</span>
               </div>
@@ -594,7 +665,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                 <span>No complimentary activity before the verifying summary.</span>
               </div>
             ) : audit.complimentaryEvidence.map(event => (
-              <div key={event.id} className="glass-panel audit-gap">
+              <div
+                key={event.id}
+                className="glass-panel audit-gap"
+                onClick={() => handleOpenCaptureModal(event.sourceCaptureId)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view raw evidence modal"
+              >
                 <strong>{event.posOrderNumber || 'Untracked order'}</strong>
                 <span>{formatDateTime(event.capturedAt)} · {event.rawFileName}</span>
               </div>
@@ -621,7 +698,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
         ) : (
           <div className="audit-gap-list">
             {audit.verifyingSummary.deliveries.map(delivery => (
-              <div key={delivery.sourceCaptureId} className="glass-panel audit-gap">
+              <div
+                key={delivery.sourceCaptureId}
+                className="glass-panel audit-gap"
+                onClick={() => handleOpenCaptureModal(delivery.sourceCaptureId)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view raw summary payload modal"
+              >
                 <strong>{formatDateTime(delivery.capturedAt)} · {delivery.rawFileName}</strong>
                 <span>{delivery.isDuplicateDelivery ? `duplicate of ${delivery.duplicateOfId}` : 'unique payload'}</span>
               </div>
@@ -648,7 +731,13 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
               </summary>
               <div className="audit-timeline-body">
                 {order.events.map(event => (
-                  <div key={event.id} className="audit-event-row">
+                  <div
+                    key={event.id}
+                    className="audit-event-row"
+                    onClick={() => handleOpenCaptureModal(event.sourceCaptureId)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view raw ESC/POS evidence modal"
+                  >
                     <span>{formatDateTime(event.capturedAt)}</span>
                     <strong>{event.eventKind.replace(/_/g, ' ')}</strong>
                     <em>{event.rawFileName}</em>
@@ -660,6 +749,15 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
           ))}
         </div>
       </section>
+
+      {/* Raw ESC/POS Evidence Inspection Modal */}
+      {modalTargetCapture && (
+        <RawEvidenceModal
+          capture={modalTargetCapture}
+          relatedCaptures={modalRelatedCaptures}
+          onClose={() => setModalTargetCapture(null)}
+        />
+      )}
     </main>
   );
 };
