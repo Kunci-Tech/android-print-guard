@@ -67,22 +67,28 @@ function detectExplicitDepartment(lines: string[]): string | undefined {
   for (const line of lines) {
     const normalized = line.trim().replace(/\s+/g, ' ').toUpperCase();
 
-    if (normalized === 'BAR') {
-      return 'BAR';
-    }
-    if (normalized === 'HOT KITCHEN') {
+    if (/\bHOT\s+KITCHEN\b/i.test(normalized)) {
       return 'HOT KITCHEN';
     }
-    if (normalized === 'COLD KITCHEN') {
+    if (/\bCOLD\s+KITCHEN\b/i.test(normalized)) {
       return 'COLD KITCHEN';
     }
-    if (normalized === 'CAPTAIN ORDER') {
+    if (/\bKITCHEN\b/i.test(normalized)) {
+      return 'KITCHEN';
+    }
+    if (/\bBAR\b/i.test(normalized)) {
+      return 'BAR';
+    }
+    if (/\bCAPTAIN\s+ORDER\b/i.test(normalized)) {
       return 'CAPTAIN ORDER';
     }
-    if (normalized.includes('RINGKASAN PENJUALAN')) {
+    if (/\bCHECKER\b/i.test(normalized)) {
+      return 'CHECKER';
+    }
+    if (normalized.includes('RINGKASAN PENJUALAN') || normalized.includes('DAILY SALES SUMMARY')) {
       return 'DAILY SALES SUMMARY';
     }
-    if (normalized.includes('KUNCI KUPPI')) {
+    if (normalized.includes('KUNCI KUPPI') || normalized.includes('BUKTI PEMBAYARAN')) {
       return 'MAIN POS BILL';
     }
   }
