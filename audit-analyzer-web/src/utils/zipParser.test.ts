@@ -1281,4 +1281,46 @@ describe('parseAuditZipArchive hardened checkers', () => {
     expect(august28?.orderTimelines).toHaveLength(2);
     expect(august28?.orderTimelines.map(t => t.posOrderNumber).sort()).toEqual(['POS-280826-11', 'POS-280826-3']);
   });
+
+  it('deduplicates cross-station runner checker tickets sent to hot and cold kitchen within a 10s window', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('hot-ticket', '2026-08-28T03:46:00.000Z', 'hot-ticket.raw', [
+        'HOT KITCHEN',
+        'Order Number : POS-280826-9',
+        'Date : 28/08/2026 10:46',
+        '+1 Nasi Goreng'
+      ].join('\n')),
+      makeCapture('cold-ticket', '2026-08-28T03:46:02.000Z', 'cold-ticket.raw', [
+        'COLD KITCHEN',
+        'Order Number : POS-280826-9',
+        'Date : 28/08/2026 10:46',
+        '+1 Nasi Goreng'
+      ].join('\n')),
+      makeCapture('bill-9', '2026-08-28T04:00:00.000Z', 'bill-9.raw', [
+        'KUNCI KUPPI',
+        'Order Number : POS-280826-9',
+        'Date : 28/08/2026 11:00',
+        'Nasi Goreng',
+        '1x 45.000 45.000',
+        'Tender',
+        'Cash'
+      ].join('\n')),
+      makeCapture('summary-28', '2026-08-28T15:00:00.000Z', 'summary-28.raw', makeDailySummary('28/08/2026', [
+        'x1 Nasi Goreng / 45.000'
+      ]))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'cross-station-runner.zip');
+    const august28 = archive.auditModel.dailyAudits.find(a => a.operationalDate === '2026-08-28');
+    const order9 = august28?.orderTimelines.find(t => t.posOrderNumber === 'POS-280826-9');
+
+    expect(order9?.exposures).toHaveLength(1);
+    expect(order9?.exposures[0]).toMatchObject({
+      normalizedProduct: 'Nasi Goreng',
+      exposedQuantity: 1,
+      department: 'HOT_KITCHEN',
+      sourceEvidenceIds: ['hot-ticket', 'cold-ticket']
+    });
+    expect(august28?.findings).toHaveLength(0);
+  });
 });

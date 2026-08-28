@@ -8,7 +8,6 @@ import type {
   FulfillmentExposure,
   NormalizedDepartment,
   NormalizedEvidence,
-  NormalizedEvidenceItemLine,
   OrderEvidenceTimeline,
   PrintAuditModel,
   PrintCoverageGap
@@ -87,46 +86,86 @@ function summarizeLatestSummary(summary: NormalizedEvidence, allSummaries: Norma
   };
 }
 
-function accumulateProduction(
-  accumulator: Map<string, ProductAccumulator>,
-  event: NormalizedEvidence,
-  item: NormalizedEvidenceItemLine
-): void {
-  const existing = accumulator.get(item.normalizedProduct) ?? {
-    normalizedProduct: item.normalizedProduct,
-    department: event.normalizedDepartment,
-    baseQuantity: 0,
-    additionQuantity: 0,
-    sourceEvidenceIds: [],
-    voidEvidenceIds: []
-  };
-
-  if (item.quantityRole === 'VOID') {
-    existing.voidEvidenceIds.push(event.sourceCaptureId);
-  } else if (item.quantityRole === 'ADDITION') {
-    existing.additionQuantity += item.quantity;
-    existing.sourceEvidenceIds.push(event.sourceCaptureId);
-  } else {
-    existing.baseQuantity = Math.max(existing.baseQuantity, item.quantity);
-    existing.sourceEvidenceIds = existing.sourceEvidenceIds.length > 0
-      ? existing.sourceEvidenceIds
-      : [event.sourceCaptureId];
+function getDepartmentPrecedence(dept: NormalizedDepartment): number {
+  switch (dept) {
+    case 'HOT_KITCHEN':
+    case 'BAR':
+      return 3;
+    case 'COLD_KITCHEN':
+      return 2;
+    case 'CAPTAIN_ORDER':
+      return 1;
+    default:
+      return 0;
   }
-
-  accumulator.set(item.normalizedProduct, existing);
 }
+
+type SeenProductionItem = {
+  product: string;
+  quantity: number;
+  quantityRole: string;
+  capturedAtMs: number;
+};
 
 function buildProductionMap(events: NormalizedEvidence[]): Map<string, ProductAccumulator> {
   const stationSpecific = new Map<string, ProductAccumulator>();
   const captainFallback = new Map<string, ProductAccumulator>();
+  const seenProductionItems: SeenProductionItem[] = [];
 
-  for (const event of events) {
+  const sortedEvents = [...events].sort(compareCapturedAt);
+
+  for (const event of sortedEvents) {
     if (event.isDuplicateDelivery) continue;
     if (event.eventKind !== 'PRODUCTION_TICKET' && event.eventKind !== 'ADD_ITEM' && event.eventKind !== 'VOID_ITEM' && event.eventKind !== 'CAPTAIN_ORDER') continue;
 
     const target = event.eventKind === 'CAPTAIN_ORDER' ? captainFallback : stationSpecific;
+    const currentMs = new Date(event.capturedAt).getTime();
+
     for (const item of event.itemLines) {
-      accumulateProduction(target, event, item);
+      const isCrossStationChecker = seenProductionItems.some(seen =>
+        seen.product === item.normalizedProduct &&
+        seen.quantity === item.quantity &&
+        seen.quantityRole === item.quantityRole &&
+        Math.abs(currentMs - seen.capturedAtMs) <= 10000
+      );
+
+      const existing = target.get(item.normalizedProduct) ?? {
+        normalizedProduct: item.normalizedProduct,
+        department: event.normalizedDepartment,
+        baseQuantity: 0,
+        additionQuantity: 0,
+        sourceEvidenceIds: [],
+        voidEvidenceIds: []
+      };
+
+      if (item.quantityRole === 'VOID') {
+        if (!existing.voidEvidenceIds.includes(event.sourceCaptureId)) {
+          existing.voidEvidenceIds.push(event.sourceCaptureId);
+        }
+      } else {
+        if (!existing.sourceEvidenceIds.includes(event.sourceCaptureId)) {
+          existing.sourceEvidenceIds.push(event.sourceCaptureId);
+        }
+        if (getDepartmentPrecedence(event.normalizedDepartment) > getDepartmentPrecedence(existing.department)) {
+          existing.department = event.normalizedDepartment;
+        }
+
+        if (!isCrossStationChecker) {
+          if (item.quantityRole === 'ADDITION') {
+            existing.additionQuantity += item.quantity;
+          } else {
+            existing.baseQuantity = Math.max(existing.baseQuantity, item.quantity);
+          }
+          seenProductionItems.push({
+            product: item.normalizedProduct,
+            quantity: item.quantity,
+            quantityRole: item.quantityRole,
+            capturedAtMs: currentMs
+          });
+        }
+      }
+
+      target.set(item.normalizedProduct, existing);
     }
   }
 

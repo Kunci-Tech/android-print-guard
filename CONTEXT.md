@@ -58,6 +58,10 @@ _Avoid_: Substring-matched department, printer address
 A repeated delivery of the same underlying print payload for the same POS Order. It is retained as transport evidence but counted once when reconstructing Fulfillment Exposure.
 _Avoid_: Additional item, bill reprint
 
+**Cross-Station Runner Checker**:
+A duplicate production ticket routed to a secondary station (such as COLD KITCHEN) to enable staff to double-check and deliver items prepared at a primary station (such as HOT KITCHEN). It is retained as transport evidence but deduplicated within a short time window so as not to inflate Fulfillment Exposure.
+_Avoid_: Additional order item, duplicate production, unrouted item
+
 **Fulfillment Exposure**:
 The highest item quantities evidenced as routed to production during a POS Order's timeline, including later add-item instructions. A later void or removal does not erase the fact that fulfillment was exposed to the item.
 _Avoid_: Net order, final order contents
