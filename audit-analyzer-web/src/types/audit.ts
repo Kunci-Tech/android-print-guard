@@ -260,9 +260,13 @@ export interface AuditFinding {
 export interface PrintCoverageGap {
   id: string;
   orderKey?: string;
+  posOrderNumber?: string;
   normalizedProduct: string;
   exposureQuantity: number;
+  paidQuantity?: number;
   summaryQuantity: number;
+  unitPrice?: number;
+  estimatedValue?: number;
   reason: 'MISSING_FINAL_PAID_BILL' | 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION';
 }
 
@@ -270,7 +274,11 @@ export interface AuditSummaryComparison {
   productionExposureQuantity: number;
   summaryQuantity: number;
   paidQuantity: number;
+  productionExposureRevenue: number;
+  paidRevenue: number;
   summaryRevenue: number;
+  revenueGap: number;
+  revenueMatchStatus: 'MATCH' | 'PRODUCTION_EXCEEDS_SUMMARY' | 'SUMMARY_EXCEEDS_PRODUCTION' | 'UNTESTED';
 }
 
 export interface SynthesisMetrics {

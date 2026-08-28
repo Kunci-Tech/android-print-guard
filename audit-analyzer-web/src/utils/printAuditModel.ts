@@ -157,11 +157,28 @@ function buildPaidQuantities(events: NormalizedEvidence[]): {
   return { quantities, latestPaid };
 }
 
+function buildProductPriceMap(evidence: NormalizedEvidence[]): Map<string, number> {
+  const prices = new Map<string, number>();
+
+  for (const event of evidence) {
+    for (const item of event.itemLines) {
+      if (item.unitPrice && item.unitPrice > 0 && !prices.has(item.normalizedProduct)) {
+        prices.set(item.normalizedProduct, item.unitPrice);
+      } else if (item.totalPrice && item.quantity > 0 && item.totalPrice > 0 && !prices.has(item.normalizedProduct)) {
+        prices.set(item.normalizedProduct, Math.round(item.totalPrice / item.quantity));
+      }
+    }
+  }
+
+  return prices;
+}
+
 function buildOrderTimeline(
   operationalDate: string,
   posOrderNumber: string,
   events: NormalizedEvidence[],
-  summary: NormalizedEvidence | undefined
+  summary: NormalizedEvidence | undefined,
+  priceMap: Map<string, number>
 ): { timeline: OrderEvidenceTimeline; findings: AuditFinding[]; gaps: PrintCoverageGap[] } {
   const orderKey = `${operationalDate}:${posOrderNumber}`;
   const sortedEvents = [...events].sort(compareCapturedAt);
@@ -175,6 +192,7 @@ function buildOrderTimeline(
     const exposedQuantity = accumulator.baseQuantity + accumulator.additionQuantity;
     const paidQuantity = paidQuantities.get(accumulator.normalizedProduct) ?? 0;
     const summaryQuantity = getSummaryQuantity(summary, accumulator.normalizedProduct);
+    const unitPrice = priceMap.get(accumulator.normalizedProduct) ?? 0;
 
     const exposure: FulfillmentExposure = {
       normalizedProduct: accumulator.normalizedProduct,
@@ -189,6 +207,7 @@ function buildOrderTimeline(
 
     if (!latestPaid) {
       if (summary && summaryQuantity < exposedQuantity) {
+        const reductionQuantity = exposedQuantity - summaryQuantity;
         findings.push({
           id: `${orderKey}:${accumulator.normalizedProduct}:summary-reduction`,
           kind: 'POST_ROUTING_REDUCTION',
@@ -200,8 +219,8 @@ function buildOrderTimeline(
           eventTime: sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId))?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
           exposureQuantity: exposedQuantity,
           posQuantity: summaryQuantity,
-          reductionQuantity: exposedQuantity - summaryQuantity,
-          estimatedValue: 0,
+          reductionQuantity,
+          estimatedValue: reductionQuantity * unitPrice,
           evidenceIds: [
             ...accumulator.sourceEvidenceIds,
             ...accumulator.voidEvidenceIds,
@@ -215,13 +234,18 @@ function buildOrderTimeline(
         gaps.push({
           id: `${orderKey}:${accumulator.normalizedProduct}:missing-final-paid-bill`,
           orderKey,
+          posOrderNumber,
           normalizedProduct: accumulator.normalizedProduct,
           exposureQuantity: exposedQuantity,
+          paidQuantity: 0,
           summaryQuantity,
+          unitPrice,
+          estimatedValue: exposedQuantity * unitPrice,
           reason: 'MISSING_FINAL_PAID_BILL'
         });
       }
     } else if (paidQuantity < exposedQuantity) {
+      const reductionQuantity = exposedQuantity - paidQuantity;
       findings.push({
         id: `${orderKey}:${accumulator.normalizedProduct}:paid-reduction`,
         kind: 'POST_ROUTING_REDUCTION',
@@ -233,8 +257,8 @@ function buildOrderTimeline(
         eventTime: sortedEvents.find(event => accumulator.sourceEvidenceIds.includes(event.sourceCaptureId))?.capturedAt ?? sortedEvents[0]?.capturedAt ?? '',
         exposureQuantity: exposedQuantity,
         posQuantity: paidQuantity,
-        reductionQuantity: exposedQuantity - paidQuantity,
-        estimatedValue: 0,
+        reductionQuantity,
+        estimatedValue: reductionQuantity * unitPrice,
         evidenceIds: [
           ...accumulator.sourceEvidenceIds,
           ...accumulator.voidEvidenceIds,
@@ -262,10 +286,40 @@ function buildOrderTimeline(
   };
 }
 
+function getProductProductionQuantity(
+  product: string,
+  productionByProduct: Map<string, number>
+): number {
+  if (productionByProduct.has(product)) {
+    return productionByProduct.get(product)!;
+  }
+
+  const productLower = product.toLowerCase().trim();
+  const productTokens = productLower.split(/\s+/).filter(Boolean);
+  if (productTokens.length === 0) return 0;
+
+  let totalMatch = 0;
+
+  for (const [prodKey, qty] of productionByProduct.entries()) {
+    const keyLower = prodKey.toLowerCase().trim();
+    const keyTokens = keyLower.split(/\s+/).filter(Boolean);
+
+    const isWordBoundaryMatch = productTokens.every(token => keyTokens.includes(token))
+      || keyTokens.every(token => productTokens.includes(token));
+
+    if (isWordBoundaryMatch) {
+      totalMatch += qty;
+    }
+  }
+
+  return totalMatch;
+}
+
 function buildSummaryExcessGaps(
   operationalDate: string,
   orderTimelines: OrderEvidenceTimeline[],
-  verifyingSummary: NormalizedEvidence | undefined
+  verifyingSummary: NormalizedEvidence | undefined,
+  priceMap: Map<string, number>
 ): PrintCoverageGap[] {
   if (!verifyingSummary) return [];
 
@@ -278,25 +332,68 @@ function buildSummaryExcessGaps(
   }
 
   return verifyingSummary.itemLines
-    .filter(item => item.quantity > (productionByProduct.get(item.normalizedProduct) ?? 0))
-    .map(item => ({
-      id: `${operationalDate}:${item.normalizedProduct}:summary-exceeds-production`,
-      normalizedProduct: item.normalizedProduct,
-      exposureQuantity: productionByProduct.get(item.normalizedProduct) ?? 0,
-      summaryQuantity: item.quantity,
-      reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION'
-    }));
+    .filter(item => item.quantity > getProductProductionQuantity(item.normalizedProduct, productionByProduct))
+    .map(item => {
+      const exposureQty = getProductProductionQuantity(item.normalizedProduct, productionByProduct);
+      const excessQty = item.quantity - exposureQty;
+      const unitPrice = priceMap.get(item.normalizedProduct) ?? (item.totalPrice && item.quantity > 0 ? Math.round(item.totalPrice / item.quantity) : 0);
+      return {
+        id: `${operationalDate}:${item.normalizedProduct}:summary-exceeds-production`,
+        normalizedProduct: item.normalizedProduct,
+        exposureQuantity: exposureQty,
+        summaryQuantity: item.quantity,
+        unitPrice,
+        estimatedValue: excessQty * unitPrice,
+        reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION'
+      };
+    });
 }
 
 function buildSummaryComparison(
   orderTimelines: OrderEvidenceTimeline[],
-  verifyingSummary: NormalizedEvidence | undefined
+  verifyingSummary: NormalizedEvidence | undefined,
+  priceMap: Map<string, number>
 ): AuditSummaryComparison {
+  const productionExposureQuantity = orderTimelines
+    .flatMap(order => order.exposures)
+    .reduce((total, item) => total + item.exposedQuantity, 0);
+
+  const summaryQuantity = verifyingSummary?.itemLines.reduce((total, item) => total + item.quantity, 0) ?? 0;
+  const paidQuantity = orderTimelines
+    .flatMap(order => order.exposures)
+    .reduce((total, item) => total + item.paidQuantity, 0);
+
+  const productionExposureRevenue = orderTimelines
+    .flatMap(order => order.exposures)
+    .reduce((total, item) => total + (item.exposedQuantity * (priceMap.get(item.normalizedProduct) ?? 0)), 0);
+
+  const paidRevenue = orderTimelines
+    .flatMap(order => order.exposures)
+    .reduce((total, item) => total + (item.paidQuantity * (priceMap.get(item.normalizedProduct) ?? 0)), 0);
+
+  const summaryRevenue = getSummaryRevenue(verifyingSummary);
+  const revenueGap = summaryRevenue - paidRevenue;
+
+  let revenueMatchStatus: AuditSummaryComparison['revenueMatchStatus'] = 'UNTESTED';
+  if (verifyingSummary) {
+    if (revenueGap === 0 && productionExposureRevenue === summaryRevenue) {
+      revenueMatchStatus = 'MATCH';
+    } else if (productionExposureRevenue > summaryRevenue) {
+      revenueMatchStatus = 'PRODUCTION_EXCEEDS_SUMMARY';
+    } else {
+      revenueMatchStatus = 'SUMMARY_EXCEEDS_PRODUCTION';
+    }
+  }
+
   return {
-    productionExposureQuantity: orderTimelines.flatMap(order => order.exposures).reduce((total, item) => total + item.exposedQuantity, 0),
-    summaryQuantity: verifyingSummary?.itemLines.reduce((total, item) => total + item.quantity, 0) ?? 0,
-    paidQuantity: orderTimelines.flatMap(order => order.exposures).reduce((total, item) => total + item.paidQuantity, 0),
-    summaryRevenue: getSummaryRevenue(verifyingSummary)
+    productionExposureQuantity,
+    summaryQuantity,
+    paidQuantity,
+    productionExposureRevenue,
+    paidRevenue,
+    summaryRevenue,
+    revenueGap,
+    revenueMatchStatus
   };
 }
 
@@ -334,20 +431,21 @@ function buildDailyAudit(operationalDate: string, evidence: NormalizedEvidence[]
     groupedOrders.set(event.posOrderNumber, existing);
   }
 
+  const priceMap = buildProductPriceMap(cutoffEvidence);
   const orderTimelines: OrderEvidenceTimeline[] = [];
   const findings: AuditFinding[] = [];
   const printCoverageGaps: PrintCoverageGap[] = [];
 
   for (const [posOrderNumber, events] of groupedOrders.entries()) {
-    const result = buildOrderTimeline(operationalDate, posOrderNumber, events, verifyingSummary);
+    const result = buildOrderTimeline(operationalDate, posOrderNumber, events, verifyingSummary, priceMap);
     orderTimelines.push(result.timeline);
     findings.push(...result.findings);
     printCoverageGaps.push(...result.gaps);
   }
 
-  printCoverageGaps.push(...buildSummaryExcessGaps(operationalDate, orderTimelines, verifyingSummary));
+  printCoverageGaps.push(...buildSummaryExcessGaps(operationalDate, orderTimelines, verifyingSummary, priceMap));
 
-  const summaryComparison = buildSummaryComparison(orderTimelines, verifyingSummary);
+  const summaryComparison = buildSummaryComparison(orderTimelines, verifyingSummary, priceMap);
   const isProvisional = excludedAfterCutoffCount > 0;
   const voidEvidence = cutoffEvidence.filter(event => event.eventKind === 'VOID_ITEM');
   const complimentaryEvidence = cutoffEvidence.filter(event => event.eventKind === 'COMPLIMENTARY_ACTIVITY');

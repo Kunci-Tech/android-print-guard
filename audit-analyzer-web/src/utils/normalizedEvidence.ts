@@ -80,7 +80,7 @@ function classifyEventKind(capture: SynthesizedCapture, department: NormalizedDe
     if (explicitLines.some(line => line === 'REPRINT' || line === 'CETAK ULANG')) {
       return 'BILL_REPRINT';
     }
-    const hasPaymentEvidence = explicitLines.some(isPaymentEvidenceLine);
+    const hasPaymentEvidence = hasCompletedPaymentEvidence(capture.parsedReceipt.lines);
     return hasPaymentEvidence ? 'FINAL_PAID_BILL' : 'NON_AUDIT_EVIDENCE';
   }
   if (department === 'CAPTAIN_ORDER') {
@@ -99,9 +99,27 @@ function classifyEventKind(capture: SynthesizedCapture, department: NormalizedDe
   return 'NON_AUDIT_EVIDENCE';
 }
 
-function isPaymentEvidenceLine(line: string): boolean {
-  if (line === 'TENDER') return true;
+function hasCompletedPaymentEvidence(lines: string[]): boolean {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().toUpperCase();
 
+    if (line === 'TENDER') {
+      const nextLine = lines[i + 1]?.trim().toUpperCase();
+      if (!nextLine || /^(NO|PENDING|UNPAID|0)$/i.test(nextLine)) {
+        return false;
+      }
+      return true;
+    }
+
+    if (isPaymentEvidenceLine(line)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isPaymentEvidenceLine(line: string): boolean {
   const labeledMethod = getLabeledPaymentMethod(line);
   if (labeledMethod) {
     return !/^(NO|PENDING|UNPAID|0)$/i.test(labeledMethod);

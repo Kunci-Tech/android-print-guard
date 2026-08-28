@@ -585,3 +585,263 @@ input:checked + .slider:before {
   background-size: 10px 10px;
   margin-top: 20px;
 }
+
+/* Financial Anomaly Alert Banner */
+.audit-anomaly-banner {
+  padding: 20px 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.audit-anomaly-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.audit-anomaly-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audit-anomaly-title h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.audit-anomaly-title p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.audit-anomaly-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.audit-anomaly-metrics div {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.audit-anomaly-metrics span {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.audit-anomaly-metrics strong {
+  font-size: 1.05rem;
+}
+
+.audit-quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.audit-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.audit-chip-rose {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.audit-chip-rose:hover {
+  background: rgba(244, 63, 94, 0.28);
+}
+
+.audit-chip-cyan {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.audit-chip-cyan:hover {
+  background: rgba(56, 189, 248, 0.28);
+}
+
+.audit-chip-amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.audit-chip-amber:hover {
+  background: rgba(245, 158, 11, 0.28);
+}
+
+/* Sales & Revenue Reconciliation Grid */
+.audit-reconcile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.audit-reconcile-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+}
+
+.audit-reconcile-card.highlight {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.audit-reconcile-card span {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.audit-reconcile-card strong {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.audit-reconcile-card small {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* Coverage Gaps Tab Group & Rich Cards */
+.audit-tab-group {
+  display: flex;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.audit-tab {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.audit-tab:hover {
+  color: var(--text-main);
+}
+
+.audit-tab.active {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+}
+
+.audit-gap-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.audit-gap-card {
+  padding: 16px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.audit-gap-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.audit-order-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.audit-gap-card-header h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.audit-qty-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.audit-qty-pills div {
+  text-align: center;
+}
+
+.audit-qty-pills span {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.audit-qty-pills strong {
+  font-size: 0.92rem;
+}
+
+.audit-gap-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+}
+
+.audit-gap-card-footer strong {
+  color: var(--text-main);
+}
+
+.text-rose { color: #fb7185 !important; }
+.text-emerald { color: #34d399 !important; }
+.font-bold { font-weight: 700 !important; }

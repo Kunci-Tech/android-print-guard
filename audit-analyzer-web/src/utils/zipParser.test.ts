@@ -657,12 +657,79 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
       {
         id: '2026-08-28:POS-260828-1:Espresso:missing-final-paid-bill',
         orderKey: '2026-08-28:POS-260828-1',
+        posOrderNumber: 'POS-260828-1',
         normalizedProduct: 'Espresso',
         exposureQuantity: 1,
+        paidQuantity: 0,
         summaryQuantity: 0,
+        unitPrice: 0,
+        estimatedValue: 0,
         reason: 'MISSING_FINAL_PAID_BILL'
       }
     ]);
+  });
+
+  it('reconciles total sales revenue and attributes estimated values to coverage gaps', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('bar-1', '2026-08-27T09:00:00.000Z', 'bar-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-300',
+        'Date: 27/08/2026 16:00',
+        'x2 Latte'
+      ].join('\n')),
+      makeCapture('paid-1', '2026-08-27T09:10:00.000Z', 'paid-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-300',
+        'Date: 27/08/2026 16:10',
+        'Latte',
+        '2x 35.000 70.000',
+        'Tender',
+        'Cash',
+        'Total 70.000'
+      ].join('\n')),
+      makeCapture('bar-2', '2026-08-27T09:20:00.000Z', 'bar-2.raw', [
+        'BAR',
+        'Order Number: POS-260827-301',
+        'Date: 27/08/2026 16:20',
+        'x1 Latte'
+      ].join('\n')),
+      makeCapture('summary-1', '2026-08-27T10:00:00.000Z', 'summary-1.raw', makeDailySummary('27/08/2026', [
+        'x2 Latte / 70.000',
+        'x1 Matcha / 40.000'
+      ]))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'revenue-reconciliation.zip');
+    const audit = archive.auditModel.dailyAudits.find(a => a.operationalDate === '2026-08-27');
+
+    expect(audit?.summaryComparison).toMatchObject({
+      productionExposureQuantity: 3,
+      paidQuantity: 2,
+      summaryQuantity: 3,
+      productionExposureRevenue: 105000,
+      paidRevenue: 70000,
+      summaryRevenue: 110000,
+      revenueGap: 40000
+    });
+
+    const missingPaidGap = audit?.printCoverageGaps.find(g => g.reason === 'MISSING_FINAL_PAID_BILL');
+    expect(missingPaidGap).toMatchObject({
+      posOrderNumber: 'POS-260827-301',
+      normalizedProduct: 'Latte',
+      exposureQuantity: 1,
+      paidQuantity: 0,
+      unitPrice: 35000,
+      estimatedValue: 35000
+    });
+
+    const summaryExceedsGap = audit?.printCoverageGaps.find(g => g.reason === 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION');
+    expect(summaryExceedsGap).toMatchObject({
+      normalizedProduct: 'Matcha',
+      exposureQuantity: 0,
+      summaryQuantity: 1,
+      unitPrice: 40000,
+      estimatedValue: 40000
+    });
   });
 
   it('selects the latest summary by capture time while preserving duplicate delivery history', async () => {
@@ -1044,5 +1111,64 @@ describe('parseAuditZipArchive order evidence timelines', () => {
         totalPrice: 0
       }
     ]);
+  });
+});
+
+describe('parseAuditZipArchive hardened checkers', () => {
+  it('prevents false product matching between non-boundary subwords', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('ticket-1', '2026-08-27T09:00:00.000Z', 'ticket-1.raw', [
+        'BAR',
+        'Order Number: POS-260827-401',
+        'Date: 27/08/2026 16:00',
+        'x1 Teapot'
+      ].join('\n')),
+      makeCapture('summary-1', '2026-08-27T10:00:00.000Z', 'summary-1.raw', makeDailySummary('27/08/2026', [
+        'x1 Tea / 15.000'
+      ]))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'word-boundary.zip');
+    const audit = archive.auditModel.dailyAudits.find(a => a.operationalDate === '2026-08-27');
+
+    const teaGap = audit?.printCoverageGaps.find(g => g.normalizedProduct === 'Tea');
+    expect(teaGap).toMatchObject({
+      exposureQuantity: 0,
+      summaryQuantity: 1,
+      reason: 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION'
+    });
+  });
+
+  it('classifies TENDER followed by Pending as NON_AUDIT_EVIDENCE', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('pending-1', '2026-08-27T09:00:00.000Z', 'pending-1.raw', [
+        'KUNCI KUPPI',
+        'Order Number: POS-260827-402',
+        'Date: 27/08/2026 16:00',
+        'Latte',
+        '1x 35.000 35.000',
+        'Tender',
+        'Pending',
+        'Total 35.000'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'tender-pending.zip');
+    expect(archive.normalizedEvidence[0].eventKind).toBe('NON_AUDIT_EVIDENCE');
+  });
+
+  it('normalizes Order Number values without POS- prefix', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('bare-order-1', '2026-08-27T09:00:00.000Z', 'bare-order-1.raw', [
+        'BAR',
+        'Order Number: 260827-403',
+        'Date: 27/08/2026 16:00',
+        'x1 Espresso'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'bare-order.zip');
+    expect(archive.normalizedEvidence[0].posOrderNumber).toBe('POS-260827-403');
+    expect(archive.synthesizedCaptures[0].parsedReceipt.orderNumber).toBe('POS-260827-403');
   });
 });

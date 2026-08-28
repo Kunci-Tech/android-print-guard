@@ -67,6 +67,8 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
   selectedDate,
   onSelectedDateChange
 }) => {
+  const [gapFilterTab, setGapFilterTab] = React.useState<'ALL' | 'MISSING_PAID' | 'SUMMARY_EXCEEDS'>('ALL');
+
   const audit = archive.auditModel.dailyAudits.find(item => item.operationalDate === selectedDate)
     ?? archive.auditModel.dailyAudits[0];
   const verdict = audit ? getVerdictTone(audit) : null;
@@ -82,6 +84,19 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
       </main>
     );
   }
+
+  const missingPaidGaps = audit.printCoverageGaps.filter(g => g.reason === 'MISSING_FINAL_PAID_BILL');
+  const summaryExceedsGaps = audit.printCoverageGaps.filter(g => g.reason === 'SUMMARY_EXCEEDS_CAPTURED_PRODUCTION');
+  
+  const displayedGaps = gapFilterTab === 'MISSING_PAID'
+    ? missingPaidGaps
+    : gapFilterTab === 'SUMMARY_EXCEEDS'
+      ? summaryExceedsGaps
+      : audit.printCoverageGaps;
+
+  const totalSuspiciousLoss = audit.findings.reduce((sum, f) => sum + f.estimatedValue, 0);
+  const totalUncapturedGapValue = audit.printCoverageGaps.reduce((sum, g) => sum + (g.estimatedValue ?? 0), 0);
+  const hasCashFinding = audit.findings.some(f => /cash/i.test(f.paymentMethod || ''));
 
   return (
     <main className="audit-workspace">
@@ -99,6 +114,49 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
           </select>
         </label>
       </section>
+
+      {/* Top Financial Anomaly Alert Banner */}
+      {(audit.findings.length > 0 || totalSuspiciousLoss > 0 || totalUncapturedGapValue > 0) && (
+        <section className="glass-panel audit-anomaly-banner">
+          <div className="audit-anomaly-header">
+            <div className="audit-anomaly-title">
+              <ShieldAlert size={22} className="text-rose" />
+              <div>
+                <h3>Financial Anomaly Alert</h3>
+                <p>Post-routing reductions & uncaptured coverage gaps detected for {audit.operationalDate}</p>
+              </div>
+            </div>
+            {hasCashFinding && (
+              <span className="badge badge-rose">
+                <AlertTriangle size={13} /> Cash Payment Findings
+              </span>
+            )}
+          </div>
+          <div className="audit-anomaly-metrics">
+            <div>
+              <span>Suspicious Reduction Loss</span>
+              <strong className="text-rose">{formatCurrency(totalSuspiciousLoss)}</strong>
+            </div>
+            <div>
+              <span>High-Priority Reductions</span>
+              <strong>{audit.findings.length} findings</strong>
+            </div>
+            <div>
+              <span>Print Coverage Gaps</span>
+              <strong>{audit.printCoverageGaps.length} gaps ({formatCurrency(totalUncapturedGapValue)})</strong>
+            </div>
+            <div>
+              <span>Provisional Exclusions</span>
+              <strong>{audit.excludedAfterCutoffCount} events after summary</strong>
+            </div>
+          </div>
+          <div className="audit-quick-links">
+            <a href="#findings-section" className="audit-chip audit-chip-rose">View {audit.findings.length} High-Priority Findings</a>
+            <a href="#reconciliation-section" className="audit-chip audit-chip-cyan">View Revenue Reconciliation</a>
+            <a href="#gaps-section" className="audit-chip audit-chip-amber">View {audit.printCoverageGaps.length} Coverage Gaps</a>
+          </div>
+        </section>
+      )}
 
       <section className="glass-panel audit-verdict-panel">
         <div>
@@ -120,15 +178,15 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
           </div>
           <div>
             <span>Production exposure</span>
-            <strong>{audit.summaryComparison.productionExposureQuantity}</strong>
+            <strong>{audit.summaryComparison.productionExposureQuantity} units</strong>
           </div>
           <div>
             <span>POS paid quantity</span>
-            <strong>{audit.summaryComparison.paidQuantity}</strong>
+            <strong>{audit.summaryComparison.paidQuantity} units</strong>
           </div>
           <div>
             <span>Summary quantity</span>
-            <strong>{audit.summaryComparison.summaryQuantity}</strong>
+            <strong>{audit.summaryComparison.summaryQuantity} units</strong>
           </div>
           <div>
             <span>Summary revenue</span>
@@ -163,7 +221,46 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
         </section>
       )}
 
-      <section className="audit-section">
+      {/* Sales & Revenue Reconciliation Section */}
+      <section id="reconciliation-section" className="audit-section">
+        <div className="audit-section-header">
+          <div>
+            <span className="audit-eyebrow">Reconciliation</span>
+            <h3>Sales & Revenue Comparison</h3>
+          </div>
+          <span className={`badge ${audit.summaryComparison.revenueMatchStatus === 'MATCH' ? 'badge-emerald' : audit.summaryComparison.revenueMatchStatus === 'PRODUCTION_EXCEEDS_SUMMARY' ? 'badge-rose' : 'badge-amber'}`}>
+            {audit.summaryComparison.revenueMatchStatus === 'MATCH' ? 'Revenue Match' : audit.summaryComparison.revenueMatchStatus === 'PRODUCTION_EXCEEDS_SUMMARY' ? 'Production Exceeds Summary' : audit.summaryComparison.revenueMatchStatus === 'SUMMARY_EXCEEDS_PRODUCTION' ? 'Summary Exceeds Production' : 'Untested'}
+          </span>
+        </div>
+
+        <div className="glass-panel audit-reconcile-grid">
+          <div className="audit-reconcile-card">
+            <span>Production Exposure</span>
+            <strong>{formatCurrency(audit.summaryComparison.productionExposureRevenue)}</strong>
+            <small>{audit.summaryComparison.productionExposureQuantity} routed items</small>
+          </div>
+          <div className="audit-reconcile-card">
+            <span>POS Paid Sales</span>
+            <strong>{formatCurrency(audit.summaryComparison.paidRevenue)}</strong>
+            <small>{audit.summaryComparison.paidQuantity} paid items</small>
+          </div>
+          <div className="audit-reconcile-card">
+            <span>Daily Summary Revenue</span>
+            <strong>{formatCurrency(audit.summaryComparison.summaryRevenue)}</strong>
+            <small>{audit.summaryComparison.summaryQuantity} summary items</small>
+          </div>
+          <div className="audit-reconcile-card highlight">
+            <span>Net Revenue Gap</span>
+            <strong className={audit.summaryComparison.revenueGap !== 0 ? 'text-rose' : 'text-emerald'}>
+              {formatCurrency(audit.summaryComparison.revenueGap)}
+            </strong>
+            <small>{audit.summaryComparison.summaryRevenue > audit.summaryComparison.paidRevenue ? 'Summary > POS Paid' : 'POS Paid >= Summary'}</small>
+          </div>
+        </div>
+      </section>
+
+      {/* High Priority Post-routing Reductions Section */}
+      <section id="findings-section" className="audit-section">
         <div className="audit-section-header">
           <div>
             <span className="audit-eyebrow">High priority</span>
@@ -216,10 +313,86 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
                   </div>
                   <div>
                     <dt>Est. value</dt>
-                    <dd>{formatCurrency(finding.estimatedValue)}</dd>
+                    <dd className="text-rose font-bold">{formatCurrency(finding.estimatedValue)}</dd>
                   </div>
                 </dl>
               </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Upgraded Print Coverage Gaps Section with Filter Tabs */}
+      <section id="gaps-section" className="audit-section">
+        <div className="audit-section-header">
+          <div>
+            <span className="audit-eyebrow">Coverage</span>
+            <h3>Print coverage gaps</h3>
+          </div>
+          <div className="audit-tab-group">
+            <button
+              type="button"
+              className={`audit-tab ${gapFilterTab === 'ALL' ? 'active' : ''}`}
+              onClick={() => setGapFilterTab('ALL')}
+            >
+              All ({audit.printCoverageGaps.length})
+            </button>
+            <button
+              type="button"
+              className={`audit-tab ${gapFilterTab === 'MISSING_PAID' ? 'active' : ''}`}
+              onClick={() => setGapFilterTab('MISSING_PAID')}
+            >
+              Missing Paid Bill ({missingPaidGaps.length})
+            </button>
+            <button
+              type="button"
+              className={`audit-tab ${gapFilterTab === 'SUMMARY_EXCEEDS' ? 'active' : ''}`}
+              onClick={() => setGapFilterTab('SUMMARY_EXCEEDS')}
+            >
+              Summary Exceeds ({summaryExceedsGaps.length})
+            </button>
+          </div>
+        </div>
+
+        {displayedGaps.length === 0 ? (
+          <div className="glass-panel audit-empty-row">
+            <ReceiptText size={18} />
+            <span>No coverage gaps match the selected filter.</span>
+          </div>
+        ) : (
+          <div className="audit-gap-cards-grid">
+            {displayedGaps.map(gap => (
+              <div key={gap.id} className="glass-panel audit-gap-card">
+                <div className="audit-gap-card-header">
+                  <div>
+                    <span className="audit-order-badge">{gap.posOrderNumber || 'Summary Scope'}</span>
+                    <h4>{gap.normalizedProduct}</h4>
+                  </div>
+                  <span className={`badge ${gap.reason === 'MISSING_FINAL_PAID_BILL' ? 'badge-amber' : 'badge-cyan'}`}>
+                    {gap.reason === 'MISSING_FINAL_PAID_BILL' ? 'Missing Paid Receipt' : 'Summary > Production'}
+                  </span>
+                </div>
+                <div className="audit-gap-card-body">
+                  <div className="audit-qty-pills">
+                    <div>
+                      <span>Routed Qty</span>
+                      <strong>{gap.exposureQuantity}</strong>
+                    </div>
+                    <div>
+                      <span>Paid Qty</span>
+                      <strong>{gap.paidQuantity ?? 0}</strong>
+                    </div>
+                    <div>
+                      <span>Summary Qty</span>
+                      <strong>{gap.summaryQuantity}</strong>
+                    </div>
+                  </div>
+                  <div className="audit-gap-card-footer">
+                    <span>Est. Unit Price: {formatCurrency(gap.unitPrice ?? 0)}</span>
+                    <strong>Est. Impact: {formatCurrency(gap.estimatedValue ?? 0)}</strong>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -294,31 +467,6 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
               <div key={delivery.sourceCaptureId} className="glass-panel audit-gap">
                 <strong>{formatDateTime(delivery.capturedAt)} · {delivery.rawFileName}</strong>
                 <span>{delivery.isDuplicateDelivery ? `duplicate of ${delivery.duplicateOfId}` : 'unique payload'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="audit-section">
-        <div className="audit-section-header">
-          <div>
-            <span className="audit-eyebrow">Coverage</span>
-            <h3>Print coverage gaps</h3>
-          </div>
-          <span className="badge badge-amber">{audit.printCoverageGaps.length} gaps</span>
-        </div>
-        {audit.printCoverageGaps.length === 0 ? (
-          <div className="glass-panel audit-empty-row">
-            <ReceiptText size={18} />
-            <span>Captured final-bill evidence covers the reconstructed production orders.</span>
-          </div>
-        ) : (
-          <div className="audit-gap-list">
-            {audit.printCoverageGaps.map(gap => (
-              <div key={gap.id} className="glass-panel audit-gap">
-                <strong>{gap.normalizedProduct}</strong>
-                <span>{gap.reason.replace(/_/g, ' ').toLowerCase()}</span>
               </div>
             ))}
           </div>

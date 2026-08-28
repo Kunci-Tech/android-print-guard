@@ -44,7 +44,10 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
 
   for (const line of lines) {
     const orderMatch = line.match(/Order\s*Number\s*:\s*([A-Za-z0-9-]+)/i);
-    if (orderMatch) orderNumber = orderMatch[1];
+    if (orderMatch) {
+      const raw = orderMatch[1].trim();
+      orderNumber = raw.startsWith('POS-') ? raw : `POS-${raw}`;
+    }
 
     const dateMatch = line.match(/Date\s*:\s*([0-9/: ]+)/i);
     if (dateMatch) date = dateMatch[1];
