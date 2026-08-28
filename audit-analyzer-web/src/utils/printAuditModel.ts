@@ -3,6 +3,7 @@ import type {
   AuditSummaryComparison,
   AuditSummarySnapshot,
   DailyAuditVerdict,
+  DailyItemComparison,
   DailyPrintAudit,
   FulfillmentExposure,
   NormalizedDepartment,
@@ -397,6 +398,77 @@ function buildSummaryComparison(
   };
 }
 
+function buildItemComparisons(
+  orderTimelines: OrderEvidenceTimeline[],
+  verifyingSummary: NormalizedEvidence | undefined,
+  priceMap: Map<string, number>
+): DailyItemComparison[] {
+  const routedMap = new Map<string, number>();
+  const paidMap = new Map<string, number>();
+
+  for (const order of orderTimelines) {
+    for (const exposure of order.exposures) {
+      routedMap.set(
+        exposure.normalizedProduct,
+        (routedMap.get(exposure.normalizedProduct) ?? 0) + exposure.exposedQuantity
+      );
+      paidMap.set(
+        exposure.normalizedProduct,
+        (paidMap.get(exposure.normalizedProduct) ?? 0) + exposure.paidQuantity
+      );
+    }
+  }
+
+  const summaryMap = new Map<string, number>();
+  if (verifyingSummary) {
+    for (const item of verifyingSummary.itemLines) {
+      summaryMap.set(
+        item.normalizedProduct,
+        (summaryMap.get(item.normalizedProduct) ?? 0) + item.quantity
+      );
+    }
+  }
+
+  const allProducts = new Set([
+    ...routedMap.keys(),
+    ...paidMap.keys(),
+    ...summaryMap.keys()
+  ]);
+
+  const result: DailyItemComparison[] = [];
+
+  for (const product of allProducts) {
+    const routedQuantity = routedMap.get(product) ?? 0;
+    const paidQuantity = paidMap.get(product) ?? 0;
+    const summaryQuantity = summaryMap.get(product) ?? 0;
+    const unitPrice = priceMap.get(product) ?? 0;
+
+    const discrepancyQuantity = summaryQuantity - routedQuantity;
+    const discrepancyRevenue = discrepancyQuantity * unitPrice;
+
+    let status: DailyItemComparison['status'] = 'MATCH';
+    if (discrepancyQuantity > 0) {
+      status = 'MISSING_PRODUCTION';
+    } else if (discrepancyQuantity < 0) {
+      status = 'EXCESS_PRODUCTION';
+    }
+
+    result.push({
+      productKey: product,
+      normalizedProduct: product,
+      routedQuantity,
+      paidQuantity,
+      summaryQuantity,
+      unitPrice,
+      discrepancyQuantity,
+      discrepancyRevenue,
+      status
+    });
+  }
+
+  return result.sort((a, b) => Math.abs(b.discrepancyQuantity) - Math.abs(a.discrepancyQuantity) || a.normalizedProduct.localeCompare(b.normalizedProduct));
+}
+
 function chooseVerdict(
   hasSummary: boolean,
   isProvisional: boolean,
@@ -446,6 +518,7 @@ function buildDailyAudit(operationalDate: string, evidence: NormalizedEvidence[]
   printCoverageGaps.push(...buildSummaryExcessGaps(operationalDate, orderTimelines, verifyingSummary, priceMap));
 
   const summaryComparison = buildSummaryComparison(orderTimelines, verifyingSummary, priceMap);
+  const itemComparisons = buildItemComparisons(orderTimelines, verifyingSummary, priceMap);
   const isProvisional = excludedAfterCutoffCount > 0;
   const voidEvidence = cutoffEvidence.filter(event => event.eventKind === 'VOID_ITEM');
   const complimentaryEvidence = cutoffEvidence.filter(event => event.eventKind === 'COMPLIMENTARY_ACTIVITY');
@@ -461,7 +534,8 @@ function buildDailyAudit(operationalDate: string, evidence: NormalizedEvidence[]
     printCoverageGaps,
     voidEvidence,
     complimentaryEvidence,
-    summaryComparison
+    summaryComparison,
+    itemComparisons
   };
 }
 

@@ -730,6 +730,31 @@ describe('parseAuditZipArchive date-scoped post-routing audit', () => {
       unitPrice: 40000,
       estimatedValue: 40000
     });
+
+    expect(audit?.itemComparisons).toEqual([
+      {
+        productKey: 'Latte',
+        normalizedProduct: 'Latte',
+        routedQuantity: 3,
+        paidQuantity: 2,
+        summaryQuantity: 2,
+        unitPrice: 35000,
+        discrepancyQuantity: -1,
+        discrepancyRevenue: -35000,
+        status: 'EXCESS_PRODUCTION'
+      },
+      {
+        productKey: 'Matcha',
+        normalizedProduct: 'Matcha',
+        routedQuantity: 0,
+        paidQuantity: 0,
+        summaryQuantity: 1,
+        unitPrice: 40000,
+        discrepancyQuantity: 1,
+        discrepancyRevenue: 40000,
+        status: 'MISSING_PRODUCTION'
+      }
+    ]);
   });
 
   it('selects the latest summary by capture time while preserving duplicate delivery history', async () => {

@@ -845,3 +845,77 @@ input:checked + .slider:before {
 .text-rose { color: #fb7185 !important; }
 .text-emerald { color: #34d399 !important; }
 .font-bold { font-weight: 700 !important; }
+
+/* Itemized Table Controls & Styling */
+.audit-table-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.audit-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.audit-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.audit-search-box input {
+  padding: 6px 12px 6px 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--text-main);
+  font-size: 0.78rem;
+  outline: none;
+  width: 180px;
+  transition: all 0.15s ease;
+}
+
+.audit-search-box input:focus {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+}
+
+.audit-table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  max-height: 480px;
+}
+
+.audit-qty-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+}
+
+.audit-qty-pill.summary {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+}
+
+.audit-qty-pill.rose {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+}
+
+.audit-qty-pill.emerald {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.audit-qty-pill.cyan {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}

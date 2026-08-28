@@ -5,8 +5,10 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Download,
   FileSearch,
   ReceiptText,
+  Search,
   ShieldAlert,
   TrendingDown
 } from 'lucide-react';
@@ -68,6 +70,8 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
   onSelectedDateChange
 }) => {
   const [gapFilterTab, setGapFilterTab] = React.useState<'ALL' | 'MISSING_PAID' | 'SUMMARY_EXCEEDS'>('ALL');
+  const [itemSearchTerm, setItemSearchTerm] = React.useState('');
+  const [itemFilterTab, setItemFilterTab] = React.useState<'ALL' | 'DISCREPANCIES' | 'MATCHES'>('ALL');
 
   const audit = archive.auditModel.dailyAudits.find(item => item.operationalDate === selectedDate)
     ?? archive.auditModel.dailyAudits[0];
@@ -93,6 +97,48 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
     : gapFilterTab === 'SUMMARY_EXCEEDS'
       ? summaryExceedsGaps
       : audit.printCoverageGaps;
+
+  const filteredItemComparisons = (audit.itemComparisons ?? []).filter(item => {
+    const matchesSearch = item.normalizedProduct.toLowerCase().includes(itemSearchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (itemFilterTab === 'DISCREPANCIES') return item.status !== 'MATCH';
+    if (itemFilterTab === 'MATCHES') return item.status === 'MATCH';
+    return true;
+  });
+
+  const handleExportItemizedCSV = () => {
+    const headers = [
+      'Product Name',
+      'Checker Routed Qty',
+      'Checker Paid Qty',
+      'Daily Summary Qty',
+      'Unit Price (IDR)',
+      'Discrepancy Qty',
+      'Discrepancy Revenue (IDR)',
+      'Status'
+    ];
+
+    const rows = filteredItemComparisons.map(i => [
+      `"${i.normalizedProduct.replace(/"/g, '""')}"`,
+      i.routedQuantity,
+      i.paidQuantity,
+      i.summaryQuantity,
+      i.unitPrice,
+      i.discrepancyQuantity,
+      i.discrepancyRevenue,
+      i.status
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `itemized_summary_comparison_${audit.operationalDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const totalSuspiciousLoss = audit.findings.reduce((sum, f) => sum + f.estimatedValue, 0);
   const totalUncapturedGapValue = audit.printCoverageGaps.reduce((sum, g) => sum + (g.estimatedValue ?? 0), 0);
@@ -256,6 +302,117 @@ export const DailyAuditWorkspace: React.FC<DailyAuditWorkspaceProps> = ({
             </strong>
             <small>{audit.summaryComparison.summaryRevenue > audit.summaryComparison.paidRevenue ? 'Summary > POS Paid' : 'POS Paid >= Summary'}</small>
           </div>
+        </div>
+      </section>
+
+      {/* Itemized Sales & Summary Comparison Table */}
+      <section id="item-comparison-section" className="audit-section">
+        <div className="audit-section-header">
+          <div>
+            <span className="audit-eyebrow">Itemized Audit</span>
+            <h3>Itemized Sales & Summary Comparison</h3>
+          </div>
+          <div className="audit-table-controls">
+            <div className="audit-search-box">
+              <Search size={14} className="audit-search-icon" />
+              <input
+                type="text"
+                placeholder="Search product..."
+                value={itemSearchTerm}
+                onChange={e => setItemSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="audit-tab-group">
+              <button
+                type="button"
+                className={`audit-tab ${itemFilterTab === 'ALL' ? 'active' : ''}`}
+                onClick={() => setItemFilterTab('ALL')}
+              >
+                All ({(audit.itemComparisons ?? []).length})
+              </button>
+              <button
+                type="button"
+                className={`audit-tab ${itemFilterTab === 'DISCREPANCIES' ? 'active' : ''}`}
+                onClick={() => setItemFilterTab('DISCREPANCIES')}
+              >
+                Discrepancies ({(audit.itemComparisons ?? []).filter(i => i.status !== 'MATCH').length})
+              </button>
+              <button
+                type="button"
+                className={`audit-tab ${itemFilterTab === 'MATCHES' ? 'active' : ''}`}
+                onClick={() => setItemFilterTab('MATCHES')}
+              >
+                Matches ({(audit.itemComparisons ?? []).filter(i => i.status === 'MATCH').length})
+              </button>
+            </div>
+            <button
+              type="button"
+              className="audit-chip audit-chip-cyan"
+              onClick={handleExportItemizedCSV}
+              title="Export itemized comparison to CSV"
+            >
+              <Download size={14} style={{ marginRight: '6px' }} /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="glass-panel audit-table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Product Name</th>
+                <th style={{ textAlign: 'center' }}>Checker Routed Qty</th>
+                <th style={{ textAlign: 'center' }}>Checker Paid Qty</th>
+                <th style={{ textAlign: 'center' }}>Daily Summary Qty</th>
+                <th style={{ textAlign: 'right' }}>Est. Unit Price</th>
+                <th style={{ textAlign: 'center' }}>Discrepancy Qty</th>
+                <th style={{ textAlign: 'right' }}>Est. Gap Value</th>
+                <th style={{ textAlign: 'center' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredItemComparisons.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                    No products match the selected criteria for operational date {audit.operationalDate}.
+                  </td>
+                </tr>
+              ) : (
+                filteredItemComparisons.map(item => (
+                  <tr key={item.productKey}>
+                    <td>
+                      <strong style={{ color: 'var(--text-main)' }}>{item.normalizedProduct}</strong>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="audit-qty-pill">{item.routedQuantity}</span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="audit-qty-pill">{item.paidQuantity}</span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="audit-qty-pill summary">{item.summaryQuantity}</span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {formatCurrency(item.unitPrice)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`audit-qty-pill ${item.discrepancyQuantity > 0 ? 'rose' : item.discrepancyQuantity < 0 ? 'cyan' : 'emerald'}`}>
+                        {item.discrepancyQuantity > 0 ? `+${item.discrepancyQuantity}` : item.discrepancyQuantity}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: item.discrepancyRevenue !== 0 ? 600 : 400 }} className={item.discrepancyRevenue > 0 ? 'text-rose' : ''}>
+                      {formatCurrency(item.discrepancyRevenue)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`badge ${item.status === 'MATCH' ? 'badge-emerald' : item.status === 'MISSING_PRODUCTION' ? 'badge-amber' : 'badge-cyan'}`}>
+                        {item.status === 'MATCH' ? 'Match' : item.status === 'MISSING_PRODUCTION' ? 'Missing Production' : 'Excess Production'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 

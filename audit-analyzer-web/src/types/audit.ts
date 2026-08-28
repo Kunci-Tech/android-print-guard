@@ -185,6 +185,18 @@ export interface PrintAuditModel {
   dailyAudits: DailyPrintAudit[];
 }
 
+export interface DailyItemComparison {
+  productKey: string;
+  normalizedProduct: string;
+  routedQuantity: number;
+  paidQuantity: number;
+  summaryQuantity: number;
+  unitPrice: number;
+  discrepancyQuantity: number;
+  discrepancyRevenue: number;
+  status: 'MATCH' | 'MISSING_PRODUCTION' | 'EXCESS_PRODUCTION';
+}
+
 export interface DailyPrintAudit {
   operationalDate: string;
   verdict: DailyAuditVerdict;
@@ -197,6 +209,7 @@ export interface DailyPrintAudit {
   voidEvidence: NormalizedEvidence[];
   complimentaryEvidence: NormalizedEvidence[];
   summaryComparison: AuditSummaryComparison;
+  itemComparisons: DailyItemComparison[];
 }
 
 export interface AuditSummarySnapshot {
