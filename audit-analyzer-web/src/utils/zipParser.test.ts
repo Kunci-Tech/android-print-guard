@@ -1250,4 +1250,35 @@ describe('parseAuditZipArchive hardened checkers', () => {
     expect(archive.normalizedEvidence[0].posOrderNumber).toBe('POS-260827-403');
     expect(archive.synthesizedCaptures[0].parsedReceipt.orderNumber).toBe('POS-260827-403');
   });
+
+  it('differentiates bills with POS-DDMMYY-INVOICEID order numbers and derives operational date correctly', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('bill-11', '2026-08-28T02:56:00.000Z', 'bill-11.raw', [
+        'KUNCI KUPPI',
+        'Order Number : POS-280826-11',
+        'Date : 28/08/2026 09:56',
+        'Latte',
+        '1x 35.000 35.000',
+        'Tender',
+        'Cash'
+      ].join('\n')),
+      makeCapture('bill-3', '2026-08-28T01:39:00.000Z', 'bill-3.raw', [
+        'KUNCI KUPPI',
+        'Order Number : POS-280826-3',
+        'Date : 28/08/2026 08:39',
+        'Americano',
+        '1x 30.000 30.000',
+        'Tender',
+        'Cash'
+      ].join('\n'))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'distinct-invoices.zip');
+    expect(archive.synthesizedCaptures[0].parsedReceipt.orderNumber).toBe('POS-280826-3');
+    expect(archive.synthesizedCaptures[1].parsedReceipt.orderNumber).toBe('POS-280826-11');
+
+    const august28 = archive.auditModel.dailyAudits.find(a => a.operationalDate === '2026-08-28');
+    expect(august28?.orderTimelines).toHaveLength(2);
+    expect(august28?.orderTimelines.map(t => t.posOrderNumber).sort()).toEqual(['POS-280826-11', 'POS-280826-3']);
+  });
 });

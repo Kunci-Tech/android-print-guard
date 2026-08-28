@@ -43,8 +43,8 @@ export function parseOrderHeaderAndItems(asciiText: string): ParsedOrderHeader |
   let totalItemCount = 0;
 
   for (const line of lines) {
-    const orderMatch = line.match(/Order\s*Number\s*:\s*([A-Za-z0-9-]+)/i);
-    if (orderMatch) {
+    const orderMatch = line.match(/(?:Order\s*Number|Order\s*No\.?|No\.?\s*Order|Invoice)\s*[:#]?\s*([A-Za-z0-9-]+)/i);
+    if (orderMatch && !orderNumber) {
       const raw = orderMatch[1].trim();
       orderNumber = raw.startsWith('POS-') ? raw : `POS-${raw}`;
     }

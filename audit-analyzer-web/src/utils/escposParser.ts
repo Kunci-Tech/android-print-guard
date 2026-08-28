@@ -41,7 +41,7 @@ export function parseESCPOSBytes(rawBytes: Uint8Array): ESCPOSParsedReceipt {
     if (tableMatch) {
       tableNumber = tableMatch[1];
     }
-    const orderMatch = line.match(/^Order\s+Number\s*:\s*([A-Za-z0-9-]+)\b/i);
+    const orderMatch = line.match(/(?:Order\s*Number|Order\s*No\.?|No\.?\s*Order|Invoice)\s*[:#]?\s*([A-Za-z0-9-]+)/i);
     if (orderMatch && !orderNumber) {
       const raw = orderMatch[1].trim();
       orderNumber = raw.startsWith('POS-') ? raw : `POS-${raw}`;

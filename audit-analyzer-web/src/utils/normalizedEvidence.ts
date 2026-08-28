@@ -40,21 +40,58 @@ function toOperationalDate(dateText: string): string | undefined {
   return `${match[3]}-${match[2]}-${match[1]}`;
 }
 
+function getOperationalDateFromOrderNumber(orderNumber?: string): string | undefined {
+  if (!orderNumber) return undefined;
+  const match = orderNumber.match(/(?:POS-)?([0-3][0-9])([0-1][0-9])([2-3][0-9])-\d+/i);
+  if (!match) return undefined;
+
+  const day = match[1];
+  const month = match[2];
+  const year = `20${match[3]}`;
+
+  const d = parseInt(day, 10);
+  const m = parseInt(month, 10);
+  if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+    return `${year}-${month}-${day}`;
+  }
+
+  return undefined;
+}
+
 function getOperationalDate(capture: SynthesizedCapture): string | undefined {
   if (capture.category === 'DAILY_SUMMARY') {
     const summary = parseDailySalesSummaryReport(capture.parsedReceipt.asciiText);
-    return toOperationalDate(summary.reportDate);
+    const summaryDate = toOperationalDate(summary.reportDate);
+    if (summaryDate) return summaryDate;
   }
 
   const header = parseOrderHeaderAndItems(capture.parsedReceipt.asciiText);
   if (header?.date) {
-    return toOperationalDate(header.date);
+    const date = toOperationalDate(header.date);
+    if (date) return date;
   }
 
   for (const line of capture.parsedReceipt.lines) {
-    const dateMatch = line.match(/^Date\s*:\s*(.+)$/i);
+    const dateMatch = line.match(/Date\s*:\s*([0-9/: ]+)/i);
     if (dateMatch) {
-      return toOperationalDate(dateMatch[1]);
+      const date = toOperationalDate(dateMatch[1]);
+      if (date) return date;
+    }
+  }
+
+  const dateFromOrder = getOperationalDateFromOrderNumber(capture.parsedReceipt.orderNumber);
+  if (dateFromOrder) {
+    return dateFromOrder;
+  }
+
+  if (capture.captured_at) {
+    try {
+      const d = new Date(capture.captured_at);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jakarta' }).format(d);
+      }
+    } catch {
+      // fallback
     }
   }
 
