@@ -62,6 +62,10 @@ _Avoid_: Additional item, bill reprint
 A duplicate production ticket routed to a secondary station (such as COLD KITCHEN) to enable staff to double-check and deliver items prepared at a primary station (such as HOT KITCHEN). It is retained as transport evidence but deduplicated within a short time window so as not to inflate Fulfillment Exposure.
 _Avoid_: Additional order item, duplicate production, unrouted item
 
+**Add-Item Ticket**:
+An item instruction printed after an initial POS order has been placed, representing a customer adding additional items (such as `+1 Monte Blanke` at `10:21` for `POS-280826-11` created at `09:56`). Because it is received outside the 10-second cross-station window or introduces a new product, it is added to cumulative Fulfillment Exposure.
+_Avoid_: Cross-station runner checker, duplicate ticket
+
 **Fulfillment Exposure**:
 The highest item quantities evidenced as routed to production during a POS Order's timeline, including later add-item instructions. A later void or removal does not erase the fact that fulfillment was exposed to the item.
 _Avoid_: Net order, final order contents

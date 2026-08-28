@@ -1323,4 +1323,45 @@ describe('parseAuditZipArchive hardened checkers', () => {
     });
     expect(august28?.findings).toHaveLength(0);
   });
+
+  it('accumulates late add-item orders printed 25m later into fulfillment exposure while matching final paid bill', async () => {
+    const zipBuffer = await buildZip([
+      makeCapture('initial-ticket', '2026-08-28T02:56:00.000Z', 'initial-ticket.raw', [
+        'BAR',
+        'Order Number : POS-280826-11',
+        'Date : 28/08/2026 09:56',
+        'x1 Matcha Iced / Freshmilk'
+      ].join('\n')),
+      makeCapture('add-ticket', '2026-08-28T03:21:00.000Z', 'add-ticket.raw', [
+        'BAR',
+        'Order Number : POS-280826-11',
+        'Date : 28/08/2026 10:21',
+        '+1 Monte Blanke'
+      ].join('\n')),
+      makeCapture('final-bill-11', '2026-08-28T03:30:00.000Z', 'final-bill-11.raw', [
+        'KUNCI KUPPI',
+        'Order Number : POS-280826-11',
+        'Date : 28/08/2026 10:30',
+        'Matcha Iced / Freshmilk',
+        '1x 35.000 35.000',
+        'Monte Blanke',
+        '1x 35.000 35.000',
+        'Tender',
+        'Qris Sinarmas'
+      ].join('\n')),
+      makeCapture('summary-28b', '2026-08-28T15:00:00.000Z', 'summary-28b.raw', makeDailySummary('28/08/2026', [
+        'x1 Matcha Iced / Freshmilk / 35.000',
+        'x1 Monte Blanke / 35.000'
+      ]))
+    ]);
+
+    const archive = await parseAuditZipArchive(zipBuffer, 'add-item-verification.zip');
+    const august28 = archive.auditModel.dailyAudits.find(a => a.operationalDate === '2026-08-28');
+    const order11 = august28?.orderTimelines.find(t => t.posOrderNumber === 'POS-280826-11');
+
+    expect(order11?.exposures).toHaveLength(2);
+    expect(order11?.exposures.map(e => e.normalizedProduct).sort()).toEqual(['Matcha Iced Freshmilk', 'Monte Blanke']);
+    expect(order11?.exposures.reduce((sum, e) => sum + e.exposedQuantity, 0)).toBe(2);
+    expect(august28?.findings).toHaveLength(0);
+  });
 });
